@@ -42,6 +42,10 @@ def photo_request_headers(image_url: str, source_site: str = "") -> dict[str, st
     site = (source_site or "").lower()
     if "apartments.com" in lower or site == "apartments.com":
         headers["Referer"] = "https://www.apartments.com/"
+    elif "zillowstatic.com" in lower or "zillow.com" in lower or site == "zillow.com":
+        headers["Referer"] = "https://www.zillow.com/"
+    elif "rdcpix.com" in lower or "realtor.com" in lower or site == "realtor.com":
+        headers["Referer"] = "https://www.realtor.com/"
     elif "rent.com" in lower or "rentcafe.com" in lower or site == "rent.com":
         headers["Referer"] = "https://www.rent.com/"
     elif "craigslist.org" in lower or site == "craigslist":
@@ -252,19 +256,29 @@ def fetch_listing_from_url(url: str, timeout: float = 20.0) -> FetchedListing:
         url = canonicalize_apartments_com_listing_url(url)
     result = FetchedListing(url=url, source_site=site)
 
-    try:
-        with httpx.Client(
-            headers=BROWSER_HEADERS,
-            timeout=timeout,
-            follow_redirects=True,
-        ) as client:
-            response = client.get(url)
-            response.raise_for_status()
-            html = response.text
-            final_url = str(response.url)
-    except Exception as exc:
-        result.extra_text = f"Could not fetch listing page: {exc}"
-        return result
+    if site in ("zillow.com", "trulia.com"):
+        from app.services.browser_fetch import fetch_with_browser
+
+        fetched = fetch_with_browser(url, site="zillow.com", timeout=timeout, min_html_length=1000)
+        if not fetched.ok:
+            result.extra_text = fetched.error or "Could not fetch listing page"
+            return result
+        html = fetched.html
+        final_url = fetched.url
+    else:
+        try:
+            with httpx.Client(
+                headers=BROWSER_HEADERS,
+                timeout=timeout,
+                follow_redirects=True,
+            ) as client:
+                response = client.get(url)
+                response.raise_for_status()
+                html = response.text
+                final_url = str(response.url)
+        except Exception as exc:
+            result.extra_text = f"Could not fetch listing page: {exc}"
+            return result
 
     soup = BeautifulSoup(html, "lxml")
     result.url = final_url

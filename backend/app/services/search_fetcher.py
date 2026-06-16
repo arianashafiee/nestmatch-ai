@@ -34,6 +34,17 @@ def fetch_search_page(
     min_html_length: int = 2000,
 ) -> FetchResult:
     """Fetch a search results page with site-appropriate headers."""
+    if site in ("zillow.com",):
+        from app.services.browser_fetch import fetch_with_browser
+
+        return fetch_with_browser(
+            url,
+            site=site,
+            params=params,
+            timeout=timeout,
+            min_html_length=min_html_length,
+        )
+
     headers = dict(BROWSER_HEADERS)
     referer = SITE_REFERERS.get(site)
     if referer:

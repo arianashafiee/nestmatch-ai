@@ -26,6 +26,99 @@ def parse_zillow_search(html: str, base_url: str) -> list[dict]:
     results: list[dict] = []
     seen_urls: set[str] = set()
 
+    next_script = soup.find("script", id="__NEXT_DATA__")
+    if next_script and next_script.string:
+        try:
+            data = json.loads(next_script.string)
+            list_results = (
+                data.get("props", {})
+                .get("pageProps", {})
+                .get("searchPageState", {})
+                .get("cat1", {})
+                .get("searchResults", {})
+                .get("listResults", [])
+            )
+            for item in list_results:
+                if not isinstance(item, dict):
+                    continue
+                detail = item.get("detailUrl") or item.get("hdpUrl")
+                if not detail:
+                    continue
+                listing_url = urljoin(base_url, str(detail))
+                if listing_url in seen_urls:
+                    continue
+                seen_urls.add(listing_url)
+
+                rent = item.get("price") or item.get("unformattedPrice")
+                beds = item.get("beds")
+                baths = item.get("baths")
+                units = item.get("units") or []
+                if isinstance(units, list) and units:
+                    unit_prices = [
+                        u.get("price")
+                        for u in units
+                        if isinstance(u, dict) and u.get("price")
+                    ]
+                    if unit_prices and rent is None:
+                        rent = min(unit_prices)
+                    if beds is None:
+                        beds = next(
+                            (u.get("beds") for u in units if isinstance(u, dict) and u.get("beds") is not None),
+                            None,
+                        )
+                    if baths is None:
+                        baths = next(
+                            (
+                                u.get("baths")
+                                for u in units
+                                if isinstance(u, dict) and u.get("baths") is not None
+                            ),
+                            None,
+                        )
+
+                lat_long = item.get("latLong") or {}
+                latitude = lat_long.get("latitude") if isinstance(lat_long, dict) else None
+                longitude = lat_long.get("longitude") if isinstance(lat_long, dict) else None
+
+                photos = normalize_photo_list(
+                    [str(item["imgSrc"])] if item.get("imgSrc") else [],
+                    "zillow.com",
+                    limit=3,
+                )
+                title = str(
+                    item.get("address")
+                    or item.get("statusText")
+                    or item.get("buildingName")
+                    or "Zillow rental"
+                )
+                snippet_parts = []
+                if rent:
+                    snippet_parts.append(f"${int(rent)}/mo")
+                if beds is not None:
+                    snippet_parts.append(f"{beds} bed")
+                if baths is not None:
+                    snippet_parts.append(f"{baths} bath")
+
+                results.append(
+                    {
+                        "title": title[:200],
+                        "url": listing_url,
+                        "rent": float(rent) if rent is not None else None,
+                        "bedrooms": float(beds) if beds is not None else None,
+                        "bathrooms": float(baths) if baths is not None else None,
+                        "snippet": " · ".join(snippet_parts),
+                        "photos": photos,
+                        "listing_address": title,
+                        "latitude": float(latitude) if latitude is not None else None,
+                        "longitude": float(longitude) if longitude is not None else None,
+                    }
+                )
+        except (json.JSONDecodeError, TypeError, AttributeError, ValueError):
+            pass
+
+    if len(results) >= 12:
+        return results[:24]
+
     for script in soup.find_all("script"):
         text = script.string or ""
         if "listResults" not in text and "searchResults" not in text:
@@ -61,46 +154,6 @@ def parse_zillow_search(html: str, base_url: str) -> list[dict]:
                     "photos": photos,
                 }
             )
-
-    for script in soup.find_all("script", id="__NEXT_DATA__"):
-        try:
-            data = json.loads(script.string or "{}")
-            queries = (
-                data.get("props", {})
-                .get("pageProps", {})
-                .get("searchPageState", {})
-                .get("cat1", {})
-                .get("searchResults", {})
-                .get("listResults", [])
-            )
-            for item in queries:
-                if not isinstance(item, dict):
-                    continue
-                detail = item.get("detailUrl") or item.get("hdpUrl")
-                if not detail:
-                    continue
-                listing_url = urljoin(base_url, str(detail))
-                if listing_url in seen_urls:
-                    continue
-                seen_urls.add(listing_url)
-                photos = normalize_photo_list(
-                    [str(item["imgSrc"])] if item.get("imgSrc") else [],
-                    "zillow.com",
-                    limit=3,
-                )
-                results.append(
-                    {
-                        "title": str(item.get("address") or item.get("statusText") or "Zillow rental"),
-                        "url": listing_url,
-                        "rent": item.get("price") or _parse_price(str(item.get("unformattedPrice", ""))),
-                        "bedrooms": item.get("beds"),
-                        "bathrooms": item.get("baths"),
-                        "snippet": str(item.get("info", ""))[:300],
-                        "photos": photos,
-                    }
-                )
-        except (json.JSONDecodeError, TypeError, AttributeError):
-            continue
 
     for card in soup.select(
         "article[data-test='property-card'], .property-card, .list-card"
@@ -148,4 +201,4 @@ def parse_zillow_search(html: str, base_url: str) -> list[dict]:
             }
         )
 
-    return results[:12]
+    return results[:24]

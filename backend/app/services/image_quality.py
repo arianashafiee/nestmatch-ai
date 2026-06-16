@@ -54,6 +54,17 @@ def upgrade_apartments_com_image(url: str) -> str:
     return upgraded
 
 
+# Realtor.com / rdcpix: s/m/l suffixes are thumbnails; o is original
+REALTOR_RDCPix_THUMB_RE = re.compile(r"(\d+)([sml])\.jpg$", re.I)
+
+
+def upgrade_realtor_com_image(url: str) -> str:
+    """Upgrade Realtor.com rdcpix thumbnails to full-size originals."""
+    if "rdcpix.com" not in url.lower():
+        return url
+    return REALTOR_RDCPix_THUMB_RE.sub(r"\1o.jpg", url)
+
+
 def upgrade_rent_com_image(url: str) -> str:
     if "rent.com" not in url.lower() and "rentcafe.com" not in url.lower():
         return url
@@ -83,6 +94,9 @@ def _image_dedupe_key(url: str) -> str:
     m = re.search(r"/([\da-f]{20,})(?:\?|$)", lower)
     if m and "rent.com" in lower:
         return f"rent:{m.group(1)}"
+    m = re.search(r"rdcpix\.com/([a-f0-9]+)-f(\d+)", lower)
+    if m:
+        return f"rdcpix:{m.group(1)}:{m.group(2)}"
     m = re.search(r"/s3/[\d/]+/([^/?]+)", lower)
     if m:
         return f"rentcafe:{m.group(1)}"
@@ -99,6 +113,8 @@ def normalize_photo_url(url: str, source_site: str = "") -> str:
         return upgrade_craigslist_image(url)
     if "apartments.com" in lower or site == "apartments.com":
         return upgrade_apartments_com_image(url)
+    if "rdcpix.com" in lower or site == "realtor.com":
+        return upgrade_realtor_com_image(url)
     if "rent.com" in lower or "rentcafe.com" in lower or "i.rent.com" in lower or site == "rent.com":
         return upgrade_rent_com_image(url)
     return url
