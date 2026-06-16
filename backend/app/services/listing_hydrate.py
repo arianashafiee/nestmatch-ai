@@ -8,10 +8,15 @@ from app.services.listing_fetcher import (
 
 
 def apply_fetched_to_listing(listing, fetched) -> None:
+    existing = list(listing.photos or [])
     if fetched.photos:
-        listing.photos = normalize_photo_list(
+        fetched_photos = normalize_photo_list(
             fetched.photos, fetched.source_site or "", limit=20
         )
+        if len(fetched_photos) >= len(existing):
+            listing.photos = fetched_photos
+    elif existing:
+        listing.photos = existing
     if fetched.source_site:
         listing.source_site = fetched.source_site
     contact = fetched_to_landlord_contact(fetched)

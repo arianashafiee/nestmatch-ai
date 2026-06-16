@@ -4,6 +4,7 @@ import {
   ChevronRight,
   GripVertical,
   MapPin,
+  Star,
 } from 'lucide-react'
 import { ScoreBadge } from '@/components/apartments/ScoreBadge'
 import { cn } from '@/lib/utils'
@@ -18,6 +19,7 @@ import { KANBAN_COLUMNS } from '@/lib/kanban'
 interface KanbanCardProps {
   apartment: Apartment
   onMove: (id: number, status: ApartmentStatus) => void
+  onToggleFavorite: (id: number, isFavorite: boolean) => void
   onDragStart: (id: number) => void
 }
 
@@ -28,6 +30,7 @@ const statusLabels = Object.fromEntries(
 export function KanbanCard({
   apartment,
   onMove,
+  onToggleFavorite,
   onDragStart,
 }: KanbanCardProps) {
   const analysis = apartment.analysis
@@ -37,6 +40,7 @@ export function KanbanCard({
   const sample = isSampleListing(apartment.rawText)
   const prev = getPreviousStatus(apartment.status)
   const next = getNextStatus(apartment.status)
+  const showFavorite = apartment.status === 'interested'
 
   return (
     <div
@@ -46,7 +50,12 @@ export function KanbanCard({
         e.dataTransfer.effectAllowed = 'move'
         onDragStart(apartment.id)
       }}
-      className="group rounded-lg border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md"
+      className={cn(
+        'group rounded-lg border bg-white shadow-sm transition-shadow hover:shadow-md',
+        apartment.isFavorite && showFavorite
+          ? 'border-amber-200 ring-1 ring-amber-100'
+          : 'border-slate-200',
+      )}
     >
       <div className="flex items-start gap-1 p-3">
         <GripVertical className="mt-0.5 h-4 w-4 shrink-0 cursor-grab text-slate-300 active:cursor-grabbing" />
@@ -61,9 +70,37 @@ export function KanbanCard({
                 {title}
               </h4>
             </Link>
-            {score != null && (
-              <ScoreBadge score={score} size="sm" className="h-9 w-9 text-xs" />
-            )}
+            <div className="flex shrink-0 items-center gap-1">
+              {showFavorite && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onToggleFavorite(apartment.id, !apartment.isFavorite)
+                  }
+                  className={cn(
+                    'rounded p-1 transition-colors',
+                    apartment.isFavorite
+                      ? 'text-amber-500 hover:text-amber-600'
+                      : 'text-slate-300 hover:text-amber-500',
+                  )}
+                  aria-label={
+                    apartment.isFavorite
+                      ? 'Remove from favorites'
+                      : 'Add to favorites'
+                  }
+                >
+                  <Star
+                    className={cn(
+                      'h-4 w-4',
+                      apartment.isFavorite && 'fill-current',
+                    )}
+                  />
+                </button>
+              )}
+              {score != null && (
+                <ScoreBadge score={score} size="sm" className="h-9 w-9 text-xs" />
+              )}
+            </div>
           </div>
           {rent != null && (
             <p className="mt-0.5 text-xs font-medium text-indigo-600">

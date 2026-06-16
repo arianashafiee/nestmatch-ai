@@ -6,6 +6,7 @@ from openai import OpenAI
 from app.config import settings
 from app.models import StudentProfile
 from app.schemas import ListingAnalysis
+from app.services.listing_address import resolve_map_location
 from app.services.mock_parser import parse_listing_mock
 
 LISTING_ANALYSIS_SCHEMA = {
@@ -92,12 +93,13 @@ LISTING TEXT:
 
 INSTRUCTIONS:
 1. Extract rent, location, bed/bath, amenities, hidden fees, lease length.
-2. Compare against student budget and dealbreakers.
-3. Calculate compatibility_score (0-100) with score_breakdown for: affordability, commute, amenities, safety_comfort, student_fit (each 0-100).
-4. Flag standard rental scams/red flags (price too low, wire transfer requests, vague listings, etc.).
-5. List missing_info the listing doesn't mention.
-6. Provide pros and cons relative to the student profile.
-7. Generate exactly 3 specific follow_up_questions for the landlord.
+2. For location, use the listing's street address if present (e.g. "123 Main St, Baltimore, MD"). Do NOT use the student's campus address as the listing location.
+3. Compare against student budget and dealbreakers.
+4. Calculate compatibility_score (0-100) with score_breakdown for: affordability, commute, amenities, safety_comfort, student_fit (each 0-100).
+5. Flag standard rental scams/red flags (price too low, wire transfer requests, vague listings, etc.).
+6. List missing_info the listing doesn't mention.
+7. Provide pros and cons relative to the student profile.
+8. Generate exactly 3 specific follow_up_questions for the landlord.
 """
 
 
@@ -129,7 +131,11 @@ def parse_listing_openai(
     if not content:
         raise ValueError("Empty response from OpenAI")
     data = json.loads(content)
-    return ListingAnalysis.model_validate(data)
+    analysis = ListingAnalysis.model_validate(data)
+    map_location = resolve_map_location(listing_text, profile, analysis.location)
+    if map_location:
+        analysis.location = map_location
+    return analysis
 
 
 def parse_listing(

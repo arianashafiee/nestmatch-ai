@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 CommuteModeLiteral = Literal["walking", "transit", "biking"]
@@ -41,6 +41,27 @@ class StudentProfileResponse(StudentProfileBase):
     updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+
+
+class RegisterRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+    password: str = Field(min_length=8, max_length=128)
+
+
+class LoginRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class UserResponse(BaseModel):
+    id: int
+    email: str
+
+
+class AuthResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
 
 
 class ScoreBreakdown(BaseModel):
@@ -94,6 +115,7 @@ class ParseListingResponse(BaseModel):
     analysis: Optional[ListingAnalysis] = None
     photos: list[str] = []
     source_site: Optional[str] = None
+    is_favorite: bool = False
     landlord_contact: Optional[LandlordContact] = None
     parsed_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
@@ -169,12 +191,53 @@ class ApartmentResponse(BaseModel):
     analysis: Optional[ListingAnalysis] = None
     photos: list[str] = []
     source_site: Optional[str] = None
+    is_favorite: bool = False
     landlord_contact: Optional[LandlordContact] = None
     parsed_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
+    listing_address: str = ""
 
     model_config = {"from_attributes": True}
 
+    @model_validator(mode="before")
+    @classmethod
+    def attach_listing_address(cls, data):
+        from app.models import ApartmentListing
+        from app.services.listing_address import extract_listing_address
+
+        if isinstance(data, ApartmentListing):
+            from app.services.image_quality import normalize_photo_list
+
+            payload = {
+                "id": data.id,
+                "profile_id": data.profile_id,
+                "raw_text": data.raw_text,
+                "source_url": data.source_url,
+                "status": data.status,
+                "title": data.title,
+                "compatibility_score": data.compatibility_score,
+                "analysis": data.analysis,
+                "photos": normalize_photo_list(
+                    data.photos or [],
+                    data.source_site or "",
+                    limit=20,
+                ),
+                "source_site": data.source_site,
+                "is_favorite": bool(getattr(data, "is_favorite", False)),
+                "landlord_contact": data.landlord_contact,
+                "parsed_at": data.parsed_at,
+                "created_at": data.created_at,
+                "listing_address": extract_listing_address(data.raw_text or ""),
+            }
+            return payload
+        if isinstance(data, dict) and not data.get("listing_address"):
+            data = dict(data)
+            data["listing_address"] = extract_listing_address(
+                str(data.get("raw_text") or "")
+            )
+        return data
+
 
 class ApartmentStatusUpdate(BaseModel):
-    status: ApartmentStatusLiteral
+    status: Optional[ApartmentStatusLiteral] = None
+    is_favorite: Optional[bool] = None

@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import Base, check_database_connection, engine
 from app.migrate import run_migrations
-from app.routers import apartments, config, parse, photos, profile, search
+from app.routers import apartments, auth, config, parse, photos, profile, search
 
 
 @asynccontextmanager
@@ -32,6 +32,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
 app.include_router(profile.router)
 app.include_router(config.router)
 app.include_router(apartments.router)

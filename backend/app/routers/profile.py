@@ -2,19 +2,19 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.auth import get_current_user
 from app.database import get_db
-from app.models import StudentProfile
+from app.models import StudentProfile, User
 from app.schemas import StudentProfileResponse, StudentProfileUpdate
+from app.services.location_parse import normalize_campus_location
 
 router = APIRouter(prefix="/api/profile", tags=["profile"])
 
-DEFAULT_PROFILE_ID = 1
 
-
-def get_or_create_profile(db: Session) -> StudentProfile:
-    profile = db.get(StudentProfile, DEFAULT_PROFILE_ID)
+def get_profile_for_user(db: Session, user: User) -> StudentProfile:
+    profile = db.query(StudentProfile).filter(StudentProfile.user_id == user.id).first()
     if profile is None:
-        profile = StudentProfile(id=DEFAULT_PROFILE_ID)
+        profile = StudentProfile(user_id=user.id)
         db.add(profile)
         db.commit()
         db.refresh(profile)
@@ -22,9 +22,18 @@ def get_or_create_profile(db: Session) -> StudentProfile:
 
 
 @router.get("", response_model=StudentProfileResponse)
-def get_profile(db: Session = Depends(get_db)) -> StudentProfile:
+def get_profile(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> StudentProfile:
     try:
-        return get_or_create_profile(db)
+        profile = get_profile_for_user(db, current_user)
+        normalized = normalize_campus_location(profile.campus_location or "")
+        if normalized and normalized != (profile.campus_location or ""):
+            profile.campus_location = normalized
+            db.commit()
+            db.refresh(profile)
+        return profile
     except SQLAlchemyError as exc:
         raise HTTPException(
             status_code=503,
@@ -36,10 +45,16 @@ def get_profile(db: Session = Depends(get_db)) -> StudentProfile:
 def upsert_profile(
     payload: StudentProfileUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> StudentProfile:
     try:
-        profile = get_or_create_profile(db)
-        for field, value in payload.model_dump().items():
+        profile = get_profile_for_user(db, current_user)
+        payload_data = payload.model_dump()
+        if payload_data.get("campus_location"):
+            payload_data["campus_location"] = normalize_campus_location(
+                payload_data["campus_location"]
+            )
+        for field, value in payload_data.items():
             setattr(profile, field, value)
         db.commit()
         db.refresh(profile)
@@ -48,5 +63,5 @@ def upsert_profile(
         db.rollback()
         raise HTTPException(
             status_code=503,
-            detail="Could not save profile to the database. Your browser copy is still kept locally.",
+            detail="Could not save profile to the database.",
         ) from exc

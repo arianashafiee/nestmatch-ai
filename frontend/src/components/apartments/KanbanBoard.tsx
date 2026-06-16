@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Star } from 'lucide-react'
 import { KanbanCard } from '@/components/apartments/KanbanCard'
 import { cn } from '@/lib/utils'
 import { KANBAN_COLUMNS } from '@/lib/kanban'
@@ -7,9 +8,21 @@ import type { Apartment, ApartmentStatus } from '@/types/apartment'
 interface KanbanBoardProps {
   apartments: Apartment[]
   onMove: (id: number, status: ApartmentStatus) => void
+  onToggleFavorite: (id: number, isFavorite: boolean) => void
 }
 
-export function KanbanBoard({ apartments, onMove }: KanbanBoardProps) {
+function sortInterested(apartments: Apartment[]): Apartment[] {
+  return [...apartments].sort((a, b) => {
+    if (a.isFavorite !== b.isFavorite) return a.isFavorite ? -1 : 1
+    return (b.compatibilityScore ?? 0) - (a.compatibilityScore ?? 0)
+  })
+}
+
+export function KanbanBoard({
+  apartments,
+  onMove,
+  onToggleFavorite,
+}: KanbanBoardProps) {
   const [draggingId, setDraggingId] = useState<number | null>(null)
   const [dropTarget, setDropTarget] = useState<ApartmentStatus | null>(null)
 
@@ -27,7 +40,15 @@ export function KanbanBoard({ apartments, onMove }: KanbanBoardProps) {
   return (
     <div className="flex gap-4 overflow-x-auto pb-4">
       {KANBAN_COLUMNS.map((column) => {
-        const items = boardApartments.filter((a) => a.status === column.key)
+        const columnItems = boardApartments.filter((a) => a.status === column.key)
+        const items =
+          column.key === 'interested'
+            ? sortInterested(columnItems)
+            : columnItems
+        const favoriteCount =
+          column.key === 'interested'
+            ? items.filter((a) => a.isFavorite).length
+            : 0
         const isTarget = dropTarget === column.key
 
         return (
@@ -60,6 +81,12 @@ export function KanbanBoard({ apartments, onMove }: KanbanBoardProps) {
                   </span>
                 </h3>
                 <p className="text-xs text-slate-500">{column.description}</p>
+                {column.key === 'interested' && favoriteCount > 0 && (
+                  <p className="mt-1 flex items-center gap-1 text-xs font-medium text-amber-700">
+                    <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                    {favoriteCount} favorite{favoriteCount === 1 ? '' : 's'}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -80,6 +107,7 @@ export function KanbanBoard({ apartments, onMove }: KanbanBoardProps) {
                       key={apt.id}
                       apartment={apt}
                       onMove={onMove}
+                      onToggleFavorite={onToggleFavorite}
                       onDragStart={setDraggingId}
                     />
                   ))

@@ -13,6 +13,7 @@ SITE_REFERERS = {
     "zillow.com": "https://www.zillow.com/",
     "realtor.com": "https://www.realtor.com/",
     "craigslist": "https://www.craigslist.org/",
+    "apartmentguide": "https://www.apartmentguide.com/",
 }
 
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ChevronLeft, ChevronRight, ImageIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { photoProxyUrl } from '@/types/apartment'
@@ -12,6 +12,10 @@ interface PhotoGalleryProps {
 export function PhotoGallery({ photos = [], title, className }: PhotoGalleryProps) {
   const safePhotos = Array.isArray(photos) ? photos : []
   const [index, setIndex] = useState(0)
+
+  useEffect(() => {
+    setIndex(0)
+  }, [safePhotos.join('|')])
 
   if (!safePhotos.length) {
     return (
@@ -44,7 +48,9 @@ export function PhotoGallery({ photos = [], title, className }: PhotoGalleryProp
           decoding="async"
           onError={(e) => {
             const img = e.currentTarget
-            if (img.src !== current) {
+            if (img.dataset.fallbackApplied === '1') return
+            img.dataset.fallbackApplied = '1'
+            if (!img.src.includes(encodeURIComponent(current))) {
               img.src = current
             }
           }}
@@ -90,7 +96,12 @@ export function PhotoGallery({ photos = [], title, className }: PhotoGalleryProp
                 alt=""
                 className="h-full w-full object-cover"
                 onError={(e) => {
-                  e.currentTarget.src = photo
+                  const img = e.currentTarget
+                  if (img.dataset.fallbackApplied === '1') return
+                  img.dataset.fallbackApplied = '1'
+                  if (!img.src.includes(encodeURIComponent(photo))) {
+                    img.src = photo
+                  }
                 }}
               />
             </button>

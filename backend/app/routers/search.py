@@ -2,10 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.auth import get_current_user
 from app.database import get_db
-from app.models import StudentProfile
-from app.routers.profile import get_or_create_profile
+from app.models import User
+from app.routers.profile import get_profile_for_user
 from app.schemas import SearchListingItem, SearchListingsRequest, SearchListingsResponse
+from app.services.image_quality import normalize_photo_list
 from app.services.listing_search import search_all_sources, search_result_to_raw_text
 
 router = APIRouter(prefix="/api", tags=["search"])
@@ -15,11 +17,10 @@ router = APIRouter(prefix="/api", tags=["search"])
 def search_listings(
     payload: SearchListingsRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> SearchListingsResponse:
     try:
-        profile = db.get(StudentProfile, payload.profile_id)
-        if profile is None:
-            profile = get_or_create_profile(db)
+        profile = get_profile_for_user(db, current_user)
 
         if not profile.campus_location and not profile.university:
             raise HTTPException(
@@ -37,7 +38,11 @@ def search_listings(
                 bedrooms=r.bedrooms,
                 bathrooms=r.bathrooms,
                 snippet=r.snippet,
-                photos=r.photos,
+                photos=normalize_photo_list(
+                    r.photos or [],
+                    r.source_site or "",
+                    limit=5,
+                ),
                 location=r.location,
                 listing_address=r.listing_address,
                 distance_miles=r.distance_miles,

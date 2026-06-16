@@ -1,7 +1,9 @@
+import { useNavigate } from 'react-router-dom'
 import { StudentProfileForm } from '@/components/profile/StudentProfileForm'
 import { useStudentProfile } from '@/context/StudentProfileContext'
 
 export function ProfilePage() {
+  const navigate = useNavigate()
   const { profile, isProfileComplete } = useStudentProfile()
 
   return (
@@ -20,7 +22,7 @@ export function ProfilePage() {
           </p>
         )}
       </div>
-      <StudentProfileForm />
+      <StudentProfileForm onSaved={() => navigate('/board')} />
     </div>
   )
 }

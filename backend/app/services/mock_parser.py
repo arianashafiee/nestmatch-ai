@@ -4,6 +4,7 @@ from typing import Optional
 
 from app.models import StudentProfile
 from app.schemas import ListingAnalysis, ScoreBreakdown
+from app.services.listing_address import extract_listing_address
 
 AMENITY_KEYWORDS = {
     "laundry": ["laundry", "washer", "dryer", "w/d"],
@@ -95,7 +96,13 @@ def parse_listing_mock(
     title = _first_line_title(text)
 
     campus = prefs["campus"]
-    location = campus if campus.lower() in text.lower() else f"Near {campus}"
+    address = extract_listing_address(text)
+    if address:
+        location = address
+    elif campus.lower() in text.lower():
+        location = campus
+    else:
+        location = f"Near {campus}"
 
     amenities = []
     for tag, keywords in AMENITY_KEYWORDS.items():

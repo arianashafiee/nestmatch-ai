@@ -102,6 +102,8 @@ def _is_valid_image_url(url: str) -> bool:
     lower = url.lower()
     if any(p in lower for p in SKIP_IMAGE_PATTERNS):
         return False
+    if "i.rent.com" in lower:
+        return True
     if "apartments.com" in lower and ("/img_" in lower or "/116/" in lower or ".jpg" in lower):
         return True
     if "craigslist.org" in lower and "images.craigslist.org" in lower:

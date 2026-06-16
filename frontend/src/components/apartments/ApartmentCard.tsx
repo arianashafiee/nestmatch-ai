@@ -4,21 +4,23 @@ import { ScoreBadge } from '@/components/apartments/ScoreBadge'
 import { cn } from '@/lib/utils'
 import { isSampleListing } from '@/lib/kanban'
 import type { Apartment } from '@/types/apartment'
-import { photoProxyUrl } from '@/types/apartment'
+import { listingTitleFromApartment, photoProxyUrl } from '@/types/apartment'
 
 interface ApartmentCardProps {
   apartment: Apartment
   compact?: boolean
+  pending?: boolean
 }
 
-export function ApartmentCard({ apartment, compact }: ApartmentCardProps) {
+export function ApartmentCard({ apartment, compact, pending }: ApartmentCardProps) {
   const analysis = apartment.analysis
   const score = apartment.compatibilityScore ?? analysis?.compatibility_score
-  const title = apartment.title ?? analysis?.title ?? 'Untitled listing'
-  const rent = analysis?.rent_monthly
+  const title = listingTitleFromApartment(apartment)
+  const rent = analysis?.rent_monthly ?? extractRentFromRawText(apartment.rawText)
   const sample = isSampleListing(apartment.rawText)
 
   const photos = apartment.photos ?? []
+  const showPhoto = Boolean(photos[0]) && (!compact || pending)
 
   return (
     <Link
@@ -26,15 +28,21 @@ export function ApartmentCard({ apartment, compact }: ApartmentCardProps) {
       className={cn(
         'block overflow-hidden rounded-xl border border-slate-200 bg-white transition-shadow hover:shadow-md',
         compact && 'p-0',
+        pending && 'border-indigo-200',
       )}
     >
-      {photos[0] && !compact && (
+      {showPhoto && (
         <img
           src={photoProxyUrl(photos[0])}
           alt=""
           className="h-32 w-full object-cover"
           onError={(e) => {
-            e.currentTarget.src = photos[0]
+            const img = e.currentTarget
+            if (img.dataset.fallbackApplied === '1') return
+            img.dataset.fallbackApplied = '1'
+            if (!img.src.includes(encodeURIComponent(photos[0]))) {
+              img.src = photos[0]
+            }
           }}
         />
       )}
@@ -59,8 +67,15 @@ export function ApartmentCard({ apartment, compact }: ApartmentCardProps) {
             </p>
           )}
         </div>
-        {score != null && <ScoreBadge score={score} size={compact ? 'sm' : 'md'} />}
+        {score != null && !pending && (
+          <ScoreBadge score={score} size={compact ? 'sm' : 'md'} />
+        )}
       </div>
+      {pending && (
+        <p className="mt-2 text-xs font-medium text-indigo-600">
+          Analyzing compatibility…
+        </p>
+      )}
       {sample && (
         <span className="mt-2 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
           Sample listing
@@ -75,4 +90,11 @@ export function ApartmentCard({ apartment, compact }: ApartmentCardProps) {
       </div>
     </Link>
   )
+}
+
+function extractRentFromRawText(rawText: string): number | null {
+  const match = rawText.match(/\$[\d,]+(?:\s*\/mo)?/i)
+  if (!match) return null
+  const value = Number(match[0].replace(/[^\d]/g, ''))
+  return Number.isFinite(value) ? value : null
 }

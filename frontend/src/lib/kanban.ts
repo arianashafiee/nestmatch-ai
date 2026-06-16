@@ -58,3 +58,34 @@ const SAMPLE_MARKER =
 export function isSampleListing(rawText: string): boolean {
   return rawText.includes(SAMPLE_MARKER)
 }
+
+export type PipelineMilestone = 'contacted' | 'tour_scheduled' | 'applied'
+
+const MILESTONE_ORDER: ApartmentStatus[] = [
+  'interested',
+  'contacted',
+  'tour_scheduled',
+  'applied',
+]
+
+export function isMilestoneComplete(
+  status: ApartmentStatus,
+  milestone: PipelineMilestone,
+): boolean {
+  if (status === 'archived' || status === 'pending') return false
+  const statusIdx = MILESTONE_ORDER.indexOf(status)
+  const milestoneIdx = MILESTONE_ORDER.indexOf(milestone)
+  if (statusIdx === -1 || milestoneIdx === -1) return false
+  return statusIdx >= milestoneIdx
+}
+
+/** Status to set when unchecking a milestone checkbox. */
+export function milestoneForStatus(
+  milestone: PipelineMilestone,
+  checked: boolean,
+): ApartmentStatus {
+  if (checked) return milestone
+  if (milestone === 'contacted') return 'interested'
+  if (milestone === 'tour_scheduled') return 'contacted'
+  return 'tour_scheduled'
+}

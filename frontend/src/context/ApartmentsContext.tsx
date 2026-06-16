@@ -12,8 +12,10 @@ import {
   createApartmentDraft,
   fetchApartments,
   parseListing,
+  updateApartmentListing,
   updateApartmentStatus,
 } from '@/lib/api'
+import { apartmentsStorageKey, useAuth } from '@/context/AuthContext'
 import { useToast } from '@/context/ToastContext'
 import type { Apartment, ApartmentStatus } from '@/types/apartment'
 import { normalizeApartment } from '@/types/apartment'
@@ -34,6 +36,7 @@ interface ApartmentsContextValue {
   ) => Promise<Apartment>
   parseApartment: (id: number, rawText?: string) => Promise<Apartment | null>
   updateStatus: (id: number, status: ApartmentStatus) => Promise<void>
+  toggleFavorite: (id: number, isFavorite: boolean) => Promise<void>
   syncApartment: (apartment: Apartment) => void
   refreshApartments: () => Promise<void>
   isAddModalOpen: boolean
@@ -43,13 +46,9 @@ interface ApartmentsContextValue {
 
 const ApartmentsContext = createContext<ApartmentsContextValue | null>(null)
 
-const STORAGE_KEY = 'nestmatch-apartments'
-
-function loadLocal(): Apartment[] {
+function loadLocal(userId: number): Apartment[] {
   try {
-    const stored =
-      localStorage.getItem(STORAGE_KEY) ??
-      localStorage.getItem('nestmatch-apartment-drafts')
+    const stored = localStorage.getItem(apartmentsStorageKey(userId))
     if (stored) {
       const parsed = JSON.parse(stored) as Partial<Apartment>[]
       return parsed
@@ -62,8 +61,8 @@ function loadLocal(): Apartment[] {
   return []
 }
 
-function persistLocal(apartments: Apartment[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(apartments))
+function persistLocal(userId: number, apartments: Apartment[]) {
+  localStorage.setItem(apartmentsStorageKey(userId), JSON.stringify(apartments))
 }
 
 function upsertApartment(list: Apartment[], updated: Apartment): Apartment[] {
@@ -76,8 +75,9 @@ function upsertApartment(list: Apartment[], updated: Apartment): Apartment[] {
 }
 
 export function ApartmentsProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
   const { showToast } = useToast()
-  const [apartments, setApartments] = useState<Apartment[]>(loadLocal)
+  const [apartments, setApartments] = useState<Apartment[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [parsingIds, setParsingIds] = useState<number[]>([])
@@ -86,21 +86,22 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
   const parseQueue = useRef<Set<number>>(new Set())
 
   const refreshApartments = useCallback(async () => {
+    if (!user) return
     setIsLoading(true)
     try {
       const data = await fetchApartments()
       setApartments(data)
-      persistLocal(data)
+      persistLocal(user.id, data)
     } catch {
-      setApartments(loadLocal())
+      setApartments(loadLocal(user.id))
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [user])
 
   const parseApartment = useCallback(
     async (id: number, rawText?: string): Promise<Apartment | null> => {
-      if (parseQueue.current.has(id)) return null
+      if (!user || parseQueue.current.has(id)) return null
       parseQueue.current.add(id)
       setParsingIds((prev) => (prev.includes(id) ? prev : [...prev, id]))
 
@@ -113,10 +114,10 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const parsed = await parseListing(text, 1, id)
+        const parsed = await parseListing(text, id)
         setApartments((prev) => {
           const next = upsertApartment(prev, parsed)
-          persistLocal(next)
+          persistLocal(user.id, next)
           return next
         })
         showToast(
@@ -134,7 +135,7 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
         setParsingIds((prev) => prev.filter((x) => x !== id))
       }
     },
-    [apartments, showToast],
+    [apartments, showToast, user],
   )
 
   const addApartment = useCallback(
@@ -146,13 +147,16 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
         sourceSite?: string
       },
     ) => {
+      if (!user) {
+        throw new Error('Sign in to save listings')
+      }
       setIsSubmitting(true)
       setSubmitError(null)
       try {
         const draft = await createApartmentDraft(rawText.trim(), options)
         setApartments((prev) => {
           const next = [draft, ...prev]
-          persistLocal(next)
+          persistLocal(user.id, next)
           return next
         })
         const parsed = await parseApartment(draft.id, draft.rawText)
@@ -160,7 +164,7 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         const fallback: Apartment = {
           id: Date.now(),
-          profileId: 1,
+          profileId: 0,
           rawText: rawText.trim(),
           sourceUrl: options?.sourceUrl ?? null,
           status: 'pending',
@@ -170,12 +174,14 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
           photos: options?.photos ?? [],
           sourceSite: options?.sourceSite ?? null,
           landlordContact: null,
+          isFavorite: false,
           parsedAt: null,
           createdAt: new Date().toISOString(),
+          listingAddress: '',
         }
         setApartments((prev) => {
           const next = [fallback, ...prev]
-          persistLocal(next)
+          persistLocal(user.id, next)
           return next
         })
         setSubmitError(
@@ -189,25 +195,66 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
         setIsSubmitting(false)
       }
     },
-    [parseApartment, showToast],
+    [parseApartment, showToast, user],
   )
 
-  const syncApartment = useCallback((apartment: Apartment) => {
-    setApartments((prev) => {
-      const next = upsertApartment(prev, apartment)
-      persistLocal(next)
-      return next
-    })
-  }, [])
+  const syncApartment = useCallback(
+    (apartment: Apartment) => {
+      if (!user) return
+      setApartments((prev) => {
+        const next = upsertApartment(prev, apartment)
+        persistLocal(user.id, next)
+        return next
+      })
+    },
+    [user],
+  )
+
+  const toggleFavorite = useCallback(
+    async (id: number, isFavorite: boolean) => {
+      if (!user) return
+      const previous = apartments.find((a) => a.id === id)
+      if (!previous) return
+
+      setApartments((prev) => {
+        const next = prev.map((a) =>
+          a.id === id ? { ...a, isFavorite } : a,
+        )
+        persistLocal(user.id, next)
+        return next
+      })
+
+      try {
+        const updated = await updateApartmentListing(id, { isFavorite })
+        setApartments((prev) => {
+          const next = upsertApartment(prev, updated)
+          persistLocal(user.id, next)
+          return next
+        })
+      } catch (err) {
+        setApartments((prev) => {
+          const next = upsertApartment(prev, previous)
+          persistLocal(user.id, next)
+          return next
+        })
+        showToast(
+          err instanceof Error ? err.message : 'Failed to update favorite',
+          'error',
+        )
+      }
+    },
+    [apartments, showToast, user],
+  )
 
   const updateStatus = useCallback(
     async (id: number, status: ApartmentStatus) => {
+      if (!user) return
       const previous = apartments.find((a) => a.id === id)
       if (!previous) return
 
       setApartments((prev) => {
         const next = prev.map((a) => (a.id === id ? { ...a, status } : a))
-        persistLocal(next)
+        persistLocal(user.id, next)
         return next
       })
 
@@ -215,7 +262,7 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
         const updated = await updateApartmentStatus(id, status)
         setApartments((prev) => {
           const next = upsertApartment(prev, updated)
-          persistLocal(next)
+          persistLocal(user.id, next)
           return next
         })
         const label =
@@ -226,7 +273,7 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         setApartments((prev) => {
           const next = upsertApartment(prev, previous)
-          persistLocal(next)
+          persistLocal(user.id, next)
           return next
         })
         showToast(
@@ -235,16 +282,24 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
         )
       }
     },
-    [apartments, showToast],
+    [apartments, showToast, user],
   )
 
   useEffect(() => {
+    if (!user) {
+      setApartments([])
+      setIsLoading(false)
+      return
+    }
+
+    const userId = user.id
+
     async function init() {
       setIsLoading(true)
       try {
         const data = await fetchApartments()
         setApartments(data)
-        persistLocal(data)
+        persistLocal(userId, data)
         const pending = data.filter(
           (a) => a.status === 'pending' && !a.analysis,
         )
@@ -252,7 +307,7 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
           await parseApartment(apt.id, apt.rawText)
         }
       } catch {
-        const local = loadLocal()
+        const local = loadLocal(userId)
         setApartments(local)
         for (const apt of local.filter(
           (a) => a.status === 'pending' && !a.analysis,
@@ -264,7 +319,7 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
       }
     }
     init()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- run once on mount
+  }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const value = useMemo(
     () => ({
@@ -276,6 +331,7 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
       addApartment,
       parseApartment,
       updateStatus,
+      toggleFavorite,
       syncApartment,
       refreshApartments,
       isAddModalOpen,
@@ -294,6 +350,7 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
       addApartment,
       parseApartment,
       updateStatus,
+      toggleFavorite,
       syncApartment,
       refreshApartments,
       isAddModalOpen,

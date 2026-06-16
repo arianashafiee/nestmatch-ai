@@ -7,7 +7,7 @@ import { ApartmentCardSkeleton } from '@/components/ui/Skeleton'
 import { useApartments } from '@/context/ApartmentsContext'
 
 export function HuntingBoardPage() {
-  const { apartments, isLoading, parsingIds, openAddModal, updateStatus } =
+  const { apartments, isLoading, parsingIds, openAddModal, updateStatus, toggleFavorite } =
     useApartments()
 
   const pending = apartments.filter(
@@ -23,8 +23,8 @@ export function HuntingBoardPage() {
             Shortlist Board
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            Drag cards between columns or use the arrows to track your hunt from
-            Interested → Applied.
+            Drag cards between columns, use checkboxes on a listing for progress,
+            or star favorites in Interested.
           </p>
         </div>
         <Button onClick={openAddModal}>
@@ -42,7 +42,7 @@ export function HuntingBoardPage() {
           </h3>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             {pending.map((apt) => (
-              <ApartmentCardSkeleton key={apt.id} />
+              <ApartmentCard key={apt.id} apartment={apt} compact pending />
             ))}
           </div>
         </section>
@@ -74,7 +74,11 @@ export function HuntingBoardPage() {
           ))}
         </div>
       ) : (
-        <KanbanBoard apartments={apartments} onMove={updateStatus} />
+        <KanbanBoard
+          apartments={apartments}
+          onMove={updateStatus}
+          onToggleFavorite={toggleFavorite}
+        />
       )}
     </div>
   )

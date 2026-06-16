@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     mapbox_access_token: Optional[str] = None
     mapbox_style_url: str = "mapbox://styles/mapbox/streets-v12"
 
+    jwt_secret: str = "nestmatch-dev-secret-change-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_hours: int = 168
+
     cors_origins: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",

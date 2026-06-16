@@ -109,7 +109,6 @@ export function StudentProfileForm({ onSaved }: StudentProfileFormProps) {
     try {
       await saveProfileToServer(draft)
       setSaved(true)
-      onSaved?.()
     } catch (err) {
       setSaved(true)
       setLocalSaveWarning(
@@ -118,6 +117,7 @@ export function StudentProfileForm({ onSaved }: StudentProfileFormProps) {
           : 'Could not reach the server — profile saved in your browser.',
       )
     }
+    onSaved?.()
   }
 
   return (

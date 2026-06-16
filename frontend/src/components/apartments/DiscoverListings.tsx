@@ -46,7 +46,7 @@ export function DiscoverListings({ onAdded }: DiscoverListingsProps) {
     setIsSearching(true)
     setResults([])
     try {
-      const data = await searchListings(1)
+      const data = await searchListings()
       setResults(data.results)
       setSourcesSearched(data.sourcesSearched)
       setSearchErrors(data.errors)
@@ -58,8 +58,15 @@ export function DiscoverListings({ onAdded }: DiscoverListingsProps) {
         aiRanked: data.aiRanked,
       })
       if (data.results.length === 0) {
+        const commuteBlocked = Object.values(data.errors).some((msg) =>
+          msg.includes('No listings within'),
+        )
         showToast(
-          'No listings found — sites may block automated search. Try pasting a direct link.',
+          commuteBlocked
+            ? 'No listings within your commute radius — try transit mode or increase max commute in Profile.'
+            : data.errors.location
+              ? data.errors.location
+              : 'No listings found — sites may block automated search. Try pasting a direct link.',
           'info',
         )
       } else {
@@ -140,6 +147,19 @@ export function DiscoverListings({ onAdded }: DiscoverListingsProps) {
         </p>
       )}
 
+      {Object.keys(searchErrors).length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <p className="font-medium">Search notes</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
+            {Object.entries(searchErrors).map(([source, message]) => (
+              <li key={source}>
+                <strong>{SOURCE_LABELS[source] ?? source}:</strong> {message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {sourcesSearched.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {sourcesSearched.map((source) => (
@@ -180,7 +200,12 @@ export function DiscoverListings({ onAdded }: DiscoverListingsProps) {
                     alt=""
                     className="h-36 w-full object-cover sm:h-auto sm:w-40 shrink-0"
                     onError={(e) => {
-                      e.currentTarget.src = listing.photos[0]
+                      const img = e.currentTarget
+                      if (img.dataset.fallbackApplied === '1') return
+                      img.dataset.fallbackApplied = '1'
+                      if (!img.src.includes(encodeURIComponent(listing.photos[0]))) {
+                        img.src = listing.photos[0]
+                      }
                     }}
                   />
                 ) : (

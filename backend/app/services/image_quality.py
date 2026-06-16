@@ -91,11 +91,15 @@ def _image_dedupe_key(url: str) -> str:
 
 def normalize_photo_url(url: str, source_site: str = "") -> str:
     site = (source_site or "").lower()
-    if "craigslist.org" in url.lower() or site == "craigslist":
+    lower = url.lower()
+    broken_rent = re.search(r"i\.rent\.com/p/images/([a-f0-9]+)\.webp", lower)
+    if broken_rent:
+        return rent_com_photo_url(broken_rent.group(1), "xl")
+    if "craigslist.org" in lower or site == "craigslist":
         return upgrade_craigslist_image(url)
-    if "apartments.com" in url.lower() or site == "apartments.com":
+    if "apartments.com" in lower or site == "apartments.com":
         return upgrade_apartments_com_image(url)
-    if "rent.com" in url.lower() or "rentcafe.com" in url.lower() or site == "rent.com":
+    if "rent.com" in lower or "rentcafe.com" in lower or "i.rent.com" in lower or site == "rent.com":
         return upgrade_rent_com_image(url)
     return url
 

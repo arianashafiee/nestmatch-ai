@@ -160,6 +160,20 @@ def _parse_next_data_search(html: str, base_url: str) -> list[dict]:
 
 
 def parse_rent_com_search(html: str, base_url: str) -> list[dict]:
+    from app.services.rentgroup_search import (
+        build_rent_com_listing_url,
+        parse_rentgroup_search,
+    )
+
+    return parse_rentgroup_search(
+        html,
+        site="rent.com",
+        listing_url_builder=lambda listing: build_rent_com_listing_url(listing, base_url),
+        limit=50,
+    )
+
+
+def _parse_rent_com_search_legacy(html: str, base_url: str) -> list[dict]:
     """Parse rent.com search results from embedded JSON-LD and listing links."""
     next_results = _parse_next_data_search(html, base_url)
     if next_results:

@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react'
 import { fetchProfile, saveProfile } from '@/lib/api'
+import { useAuth, profileStorageKey } from '@/context/AuthContext'
 import {
   defaultStudentProfile,
   type StudentProfile,
@@ -28,11 +29,9 @@ const StudentProfileContext = createContext<StudentProfileContextValue | null>(
   null,
 )
 
-const STORAGE_KEY = 'nestmatch-student-profile'
-
-function loadProfile(): StudentProfile {
+function loadProfile(userId: number): StudentProfile {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY)
+    const stored = localStorage.getItem(profileStorageKey(userId))
     if (stored) {
       return { ...defaultStudentProfile, ...JSON.parse(stored) }
     }
@@ -42,8 +41,8 @@ function loadProfile(): StudentProfile {
   return defaultStudentProfile
 }
 
-function persistLocal(profile: StudentProfile) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(profile))
+function persistLocal(userId: number, profile: StudentProfile) {
+  localStorage.setItem(profileStorageKey(userId), JSON.stringify(profile))
 }
 
 function isComplete(profile: StudentProfile): boolean {
@@ -55,41 +54,54 @@ function isComplete(profile: StudentProfile): boolean {
 }
 
 export function StudentProfileProvider({ children }: { children: ReactNode }) {
-  const [profile, setProfile] = useState<StudentProfile>(loadProfile)
+  const { user } = useAuth()
+  const [profile, setProfile] = useState<StudentProfile>(defaultStudentProfile)
   const [isSaving, setIsSaving] = useState(false)
   const [isSyncedWithServer, setIsSyncedWithServer] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!user) {
+      setProfile(defaultStudentProfile)
+      setIsSyncedWithServer(false)
+      return
+    }
+
+    setProfile(loadProfile(user.id))
     fetchProfile()
       .then((serverProfile) => {
         setProfile(serverProfile)
-        persistLocal(serverProfile)
+        persistLocal(user.id, serverProfile)
         setIsSyncedWithServer(true)
       })
       .catch(() => {
         setIsSyncedWithServer(false)
       })
-  }, [])
+  }, [user?.id])
 
-  const updateProfile = useCallback((updates: Partial<StudentProfile>) => {
-    setProfile((prev) => {
-      const next = { ...prev, ...updates }
-      persistLocal(next)
-      return next
-    })
-    setSaveError(null)
-  }, [])
+  const updateProfile = useCallback(
+    (updates: Partial<StudentProfile>) => {
+      if (!user) return
+      setProfile((prev) => {
+        const next = { ...prev, ...updates }
+        persistLocal(user.id, next)
+        return next
+      })
+      setSaveError(null)
+    },
+    [user],
+  )
 
   const saveProfileToServer = useCallback(
     async (profileToSave?: StudentProfile) => {
+      if (!user) return
       const payload = profileToSave ?? profile
       setIsSaving(true)
       setSaveError(null)
       try {
         const saved = await saveProfile(payload)
         setProfile(saved)
-        persistLocal(saved)
+        persistLocal(user.id, saved)
         setIsSyncedWithServer(true)
       } catch (err) {
         setSaveError(
@@ -100,14 +112,15 @@ export function StudentProfileProvider({ children }: { children: ReactNode }) {
         setIsSaving(false)
       }
     },
-    [profile],
+    [profile, user],
   )
 
   const resetProfile = useCallback(() => {
+    if (!user) return
     setProfile(defaultStudentProfile)
-    localStorage.removeItem(STORAGE_KEY)
+    localStorage.removeItem(profileStorageKey(user.id))
     setSaveError(null)
-  }, [])
+  }, [user])
 
   const value = useMemo(
     () => ({

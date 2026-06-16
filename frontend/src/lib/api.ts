@@ -8,6 +8,10 @@ import {
 
 const API_BASE = '/api'
 
+function getAuthToken(): string | null {
+  return localStorage.getItem('nestmatch-auth-token')
+}
+
 function parseErrorDetail(body: unknown, status: number): string {
   if (body && typeof body === 'object' && 'detail' in body) {
     const detail = (body as { detail: unknown }).detail
@@ -29,8 +33,13 @@ async function request<T>(
   path: string,
   options?: RequestInit,
 ): Promise<T> {
+  const token = getAuthToken()
   const response = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options?.headers,
+    },
     ...options,
   })
 
@@ -40,6 +49,44 @@ async function request<T>(
   }
 
   return response.json() as Promise<T>
+}
+
+export interface AuthUser {
+  id: number
+  email: string
+}
+
+export async function registerUser(
+  email: string,
+  password: string,
+): Promise<{ accessToken: string; user: AuthUser }> {
+  const data = await request<{ access_token: string; user: AuthUser }>(
+    '/auth/register',
+    {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    },
+  )
+  return { accessToken: data.access_token, user: data.user }
+}
+
+export async function loginUser(
+  email: string,
+  password: string,
+): Promise<{ accessToken: string; user: AuthUser }> {
+  const data = await request<{ access_token: string; user: AuthUser }>(
+    '/auth/login',
+    {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    },
+  )
+  return { accessToken: data.access_token, user: data.user }
+}
+
+export async function fetchCurrentUser(): Promise<AuthUser> {
+  const data = await request<{ id: number; email: string }>('/auth/me')
+  return { id: data.id, email: data.email }
 }
 
 export async function fetchProfile(): Promise<StudentProfile> {
@@ -88,12 +135,10 @@ export async function createApartmentDraft(
   return apartmentFromApi(data)
 }
 
-export async function searchListings(
-  profileId = 1,
-): Promise<SearchListingsResponse> {
+export async function searchListings(): Promise<SearchListingsResponse> {
   const data = await request<Record<string, unknown>>('/search-listings', {
     method: 'POST',
-    body: JSON.stringify({ profile_id: profileId }),
+    body: JSON.stringify({}),
   })
   const results = (data.results as Record<string, unknown>[]) ?? []
   return {
@@ -120,17 +165,36 @@ export async function refreshListingPhotos(id: number): Promise<Apartment> {
 
 export async function parseListing(
   listingText: string,
-  profileId = 1,
   apartmentId?: number,
 ): Promise<Apartment> {
   const data = await request<Record<string, unknown>>('/parse-listing', {
     method: 'POST',
     body: JSON.stringify({
       listing_text: listingText,
-      profile_id: profileId,
       apartment_id: apartmentId,
     }),
   })
+  return apartmentFromApi(data)
+}
+
+export async function updateApartmentListing(
+  id: number,
+  updates: {
+    status?: Apartment['status']
+    isFavorite?: boolean
+  },
+): Promise<Apartment> {
+  const body: Record<string, unknown> = {}
+  if (updates.status !== undefined) body.status = updates.status
+  if (updates.isFavorite !== undefined) body.is_favorite = updates.isFavorite
+
+  const data = await request<Record<string, unknown>>(
+    `/apartments/${id}/status`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    },
+  )
   return apartmentFromApi(data)
 }
 
@@ -138,14 +202,7 @@ export async function updateApartmentStatus(
   id: number,
   status: Apartment['status'],
 ): Promise<Apartment> {
-  const data = await request<Record<string, unknown>>(
-    `/apartments/${id}/status`,
-    {
-      method: 'PUT',
-      body: JSON.stringify({ status }),
-    },
-  )
-  return apartmentFromApi(data)
+  return updateApartmentListing(id, { status })
 }
 
 export interface AppConfig {

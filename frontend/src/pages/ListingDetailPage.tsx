@@ -1,22 +1,23 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, ExternalLink, Loader2, RefreshCw } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Loader2, RefreshCw, Star } from 'lucide-react'
 import { AnalysisDashboard } from '@/components/apartments/AnalysisDashboard'
 import { LandlordContactCard } from '@/components/apartments/LandlordContactCard'
 import { LandlordMessageGenerator } from '@/components/apartments/LandlordMessageGenerator'
 import { ListingMap } from '@/components/apartments/ListingMap'
+import { ListingProgressChecklist } from '@/components/apartments/ListingProgressChecklist'
 import { ParsingOverlay } from '@/components/apartments/ParsingOverlay'
 import { PhotoGallery } from '@/components/apartments/PhotoGallery'
 import { Button } from '@/components/ui/Button'
 import { useApartments } from '@/context/ApartmentsContext'
 import { refreshListingPhotos, fetchApartment } from '@/lib/api'
-import { isSampleListing, KANBAN_COLUMNS } from '@/lib/kanban'
+import { isSampleListing } from '@/lib/kanban'
 import type { Apartment } from '@/types/apartment'
-import { cn } from '@/lib/utils'
+import { mapLocationForApartment } from '@/types/apartment'
 
 export function ListingDetailPage() {
   const { id } = useParams<{ id: string }>()
-  const { apartments, parsingIds, parseApartment, updateStatus, syncApartment } =
+  const { apartments, parsingIds, parseApartment, updateStatus, toggleFavorite, syncApartment } =
     useApartments()
   const [apartment, setApartment] = useState<Apartment | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -85,7 +86,7 @@ export function ListingDetailPage() {
   }
 
   const analysis = apartment.analysis
-  const pipelineStatuses = KANBAN_COLUMNS.map((c) => c.key)
+  const mapLocation = mapLocationForApartment(apartment)
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -109,6 +110,28 @@ export function ListingDetailPage() {
           <span className="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-700">
             via {apartment.sourceSite}
           </span>
+          {apartment.status === 'interested' && (
+            <button
+              type="button"
+              onClick={() =>
+                toggleFavorite(apartment.id, !apartment.isFavorite)
+              }
+              className={
+                apartment.isFavorite
+                  ? 'inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-700'
+                  : 'inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 font-medium text-slate-600 hover:border-amber-200 hover:text-amber-700'
+              }
+            >
+              <Star
+                className={
+                  apartment.isFavorite
+                    ? 'h-3.5 w-3.5 fill-amber-400 text-amber-400'
+                    : 'h-3.5 w-3.5'
+                }
+              />
+              {apartment.isFavorite ? 'Favorited' : 'Add to favorites'}
+            </button>
+          )}
           {apartment.sourceUrl && (
             <a
               href={apartment.sourceUrl}
@@ -144,21 +167,10 @@ export function ListingDetailPage() {
       />
 
       {analysis && apartment.status !== 'pending' && (
-        <div className="flex flex-wrap gap-2">
-          {pipelineStatuses.map((status) => (
-            <Button
-              key={status}
-              size="sm"
-              variant={apartment.status === status ? 'primary' : 'outline'}
-              onClick={() => updateStatus(apartment.id, status)}
-              className={cn(
-                apartment.status === status && 'ring-2 ring-indigo-300',
-              )}
-            >
-              {KANBAN_COLUMNS.find((c) => c.key === status)?.label ?? status}
-            </Button>
-          ))}
-        </div>
+        <ListingProgressChecklist
+          status={apartment.status}
+          onStatusChange={(status) => updateStatus(apartment.id, status)}
+        />
       )}
 
       {isParsing || (!analysis && apartment.status === 'pending') ? (
@@ -172,7 +184,8 @@ export function ListingDetailPage() {
                 sourceUrl={apartment.sourceUrl}
               />
               <ListingMap
-                location={analysis.location}
+                location={mapLocation}
+                fallbackLabel={analysis.location}
                 commuteMinutes={analysis.estimated_commute_minutes}
               />
             </>

@@ -15,9 +15,11 @@ from app.services.geo import (
 from app.services.location_parse import ParsedLocation, parse_campus_location
 from app.services.search_fetcher import fetch_search_page
 
-MAX_FETCH_PER_SOURCE = 12
-MAX_RESULTS_PER_SOURCE = 4
-MAX_TOTAL_RESULTS = 20
+MAX_FETCH_PER_SOURCE = 50
+MAX_RESULTS_PER_SOURCE = 24
+MAX_TOTAL_RESULTS = 72
+COMMUTE_SOFT_FALLBACK_COUNT = 15
+APARTMENTGUIDE_SEARCH_PAGES = 5
 
 STATE_SLUGS = {
     "al": "alabama",
@@ -214,7 +216,7 @@ def _apply_commute_filter(
         return results
 
     campus_lat, campus_lng = campus_coords
-    filtered: list[SearchResult] = []
+    scored: list[tuple[int, SearchResult]] = []
 
     for result in results:
         lat = result.latitude
@@ -231,107 +233,195 @@ def _apply_commute_filter(
 
         distance = haversine_miles(campus_lat, campus_lng, lat, lng)
         commute = estimate_commute_minutes(distance, commute_mode)
-        if commute > max_commute_minutes:
-            continue
-
         result.latitude = lat
         result.longitude = lng
         result.distance_miles = round(distance, 2)
         result.commute_minutes = commute
-        filtered.append(result)
+        scored.append((commute, result))
 
-    filtered.sort(
-        key=lambda r: (
-            r.commute_minutes if r.commute_minutes is not None else 999,
-            -(r.rent or 0),
-        )
-    )
+    if not scored:
+        return []
+
+    scored.sort(key=lambda pair: (pair[0], -(pair[1].rent or 0)))
+    strict = [result for commute, result in scored if commute <= max_commute_minutes]
+    filtered = list(strict)
+    seen_ids = {id(result) for result in filtered}
+
+    if len(filtered) < COMMUTE_SOFT_FALLBACK_COUNT:
+        for commute, result in scored:
+            if len(filtered) >= COMMUTE_SOFT_FALLBACK_COUNT:
+                break
+            if id(result) in seen_ids:
+                continue
+            seen_ids.add(id(result))
+            if commute > max_commute_minutes:
+                note = (
+                    f"~{commute} min {commute_mode} "
+                    f"(outside your {max_commute_minutes} min limit)"
+                )
+                if note not in result.snippet:
+                    result.snippet = f"{note}. {result.snippet}".strip()
+            filtered.append(result)
+
     return filtered
+
+
+def _item_to_search_result(
+    item: dict,
+    source_site: str,
+    area: str,
+    *,
+    url_key: str = "url",
+) -> SearchResult:
+    beds = item.get("bedrooms")
+    baths = item.get("bathrooms")
+    if beds is None or baths is None:
+        parsed_beds, parsed_baths = _parse_beds_baths(
+            item.get("snippet", "") + " " + item.get("title", "")
+        )
+        beds = beds if beds is not None else parsed_beds
+        baths = baths if baths is not None else parsed_baths
+    return SearchResult(
+        title=item.get("title", f"{source_site} listing"),
+        url=item[url_key],
+        source_site=source_site,
+        rent=item.get("rent"),
+        bedrooms=beds,
+        bathrooms=baths,
+        snippet=item.get("snippet", ""),
+        photos=item.get("photos", []),
+        location=area,
+        listing_address=item.get("listing_address", ""),
+        latitude=item.get("latitude"),
+        longitude=item.get("longitude"),
+    )
 
 
 def search_apartments_com(
     parsed: ParsedLocation, max_rent: float
 ) -> tuple[list[SearchResult], Optional[str]]:
+    from app.services.apartmentguide_com import (
+        apartmentguide_search_url,
+        parse_apartmentguide_search,
+    )
     from app.services.apartments_com import parse_apartments_com_search
 
     slug = _slugify_location(parsed)
-    if not slug:
+    if not slug and not parsed.is_usable_for_search:
         return [], "Could not parse city/state from campus location"
-
-    url = f"https://www.apartments.com/{slug}/"
-    if max_rent:
-        url = f"https://www.apartments.com/{slug}/under-{int(max_rent)}/"
-
-    fetched = fetch_search_page(url, site="apartments.com")
-    if not fetched.ok:
-        return [], fetched.error
 
     area = _search_area(parsed)
     results: list[SearchResult] = []
-    for item in parse_apartments_com_search(fetched.html, fetched.url):
-        beds, baths = _parse_beds_baths(
-            item.get("snippet", "") + " " + item.get("title", "")
-        )
-        results.append(
-            SearchResult(
-                title=item.get("title", "Apartments.com listing"),
-                url=item["url"],
-                source_site="apartments.com",
-                rent=item.get("rent"),
-                bedrooms=beds,
-                bathrooms=baths,
-                snippet=item.get("snippet", ""),
-                photos=item.get("photos", []),
-                location=area,
-            )
-        )
+    seen_urls: set[str] = set()
+    fetch_note: Optional[str] = None
+
+    if slug:
+        url = f"https://www.apartments.com/{slug}/"
+        if max_rent:
+            url = f"https://www.apartments.com/{slug}/under-{int(max_rent)}/"
+        fetched = fetch_search_page(url, site="apartments.com")
+        if fetched.ok:
+            for item in parse_apartments_com_search(fetched.html, fetched.url):
+                if item["url"] in seen_urls:
+                    continue
+                seen_urls.add(item["url"])
+                results.append(_item_to_search_result(item, "apartments.com", area))
+        elif fetched.error:
+            fetch_note = fetched.error
+
+    ag_base = apartmentguide_search_url(parsed, max_rent)
+    if ag_base:
+        for page in range(1, APARTMENTGUIDE_SEARCH_PAGES + 1):
+            page_url = ag_base if page == 1 else f"{ag_base.rstrip('/')}/page-{page}/"
+            fetched = fetch_search_page(page_url, site="apartmentguide")
+            if not fetched.ok:
+                break
+            page_items = parse_apartmentguide_search(fetched.html, fetched.url)
+            if not page_items:
+                break
+            for item in page_items:
+                listing_url = item.get("apartments_com_url") or item["url"]
+                if listing_url in seen_urls:
+                    continue
+                seen_urls.add(listing_url)
+                item = dict(item)
+                item["url"] = listing_url
+                if fetch_note and "ApartmentGuide" not in item.get("snippet", ""):
+                    item["snippet"] = (
+                        f"Via ApartmentGuide catalog. {item.get('snippet', '')}".strip()
+                    )
+                results.append(_item_to_search_result(item, "apartments.com", area))
+            if page > 1 and len(page_items) < 20:
+                break
+
     if not results:
-        return [], "No apartments.com listings parsed (try pasting a direct listing URL)"
+        return [], fetch_note or "No apartments.com listings found for this area"
+    if fetch_note and results:
+        return results, f"Direct apartments.com blocked — loaded {len(results)} via ApartmentGuide feed"
     return results, None
 
 
 def search_rent_com(
     parsed: ParsedLocation, max_rent: float
 ) -> tuple[list[SearchResult], Optional[str]]:
+    from app.services.apartmentguide_com import (
+        apartmentguide_search_url,
+        parse_apartmentguide_search,
+    )
     from app.services.rent_com import parse_rent_com_search
 
     url = _rent_com_search_url(parsed, max_rent)
-    if not url:
+    if not url and not parsed.is_usable_for_search:
         return [], "Could not parse city/state from campus location"
-
-    fetched = fetch_search_page(url, site="rent.com")
-    if not fetched.ok:
-        return [], fetched.error
 
     area = _search_area(parsed)
     results: list[SearchResult] = []
-    for item in parse_rent_com_search(fetched.html, fetched.url):
-        beds = item.get("bedrooms")
-        baths = item.get("bathrooms")
-        if beds is None or baths is None:
-            parsed_beds, parsed_baths = _parse_beds_baths(
-                item.get("snippet", "") + " " + item.get("title", "")
-            )
-            beds = beds if beds is not None else parsed_beds
-            baths = baths if baths is not None else parsed_baths
-        results.append(
-            SearchResult(
-                title=item.get("title", "Rent.com listing"),
-                url=item["url"],
-                source_site="rent.com",
-                rent=item.get("rent"),
-                bedrooms=beds,
-                bathrooms=baths,
-                snippet=item.get("snippet", ""),
-                photos=item.get("photos", []),
-                location=area,
-                listing_address=item.get("listing_address", ""),
-                latitude=item.get("latitude"),
-                longitude=item.get("longitude"),
-            )
-        )
+    seen_urls: set[str] = set()
+    fetch_note: Optional[str] = None
+
+    if url:
+        fetched = fetch_search_page(url, site="rent.com")
+        if fetched.ok:
+            for item in parse_rent_com_search(fetched.html, fetched.url):
+                if item["url"] in seen_urls:
+                    continue
+                seen_urls.add(item["url"])
+                results.append(_item_to_search_result(item, "rent.com", area))
+        elif fetched.error:
+            fetch_note = fetched.error
+
+    ag_base = apartmentguide_search_url(parsed, max_rent)
+    if ag_base:
+        for page in range(1, APARTMENTGUIDE_SEARCH_PAGES + 1):
+            page_url = ag_base if page == 1 else f"{ag_base.rstrip('/')}/page-{page}/"
+            fetched = fetch_search_page(page_url, site="apartmentguide")
+            if not fetched.ok:
+                break
+            page_items = parse_apartmentguide_search(fetched.html, fetched.url)
+            if not page_items:
+                break
+            for item in page_items:
+                listing_url = item.get("rent_com_url") or ""
+                if not listing_url or listing_url in seen_urls:
+                    continue
+                seen_urls.add(listing_url)
+                item = dict(item)
+                item["url"] = listing_url
+                if fetch_note and "ApartmentGuide" not in item.get("snippet", ""):
+                    item["snippet"] = (
+                        f"Via ApartmentGuide catalog. {item.get('snippet', '')}".strip()
+                    )
+                results.append(_item_to_search_result(item, "rent.com", area))
+            if page > 1 and len(page_items) < 20:
+                break
+
     if not results:
-        return [], "No rent.com listings parsed (try pasting a direct listing URL)"
+        return [], fetch_note or "No rent.com listings found for this area"
+    if fetch_note and results:
+        return (
+            results,
+            f"Direct rent.com limited — loaded {len(results)} via ApartmentGuide feed",
+        )
     return results, None
 
 
@@ -432,6 +522,12 @@ def search_craigslist(
                     listing_address=listing_address,
                 )
             )
+
+    if results:
+        from app.services.craigslist import enrich_craigslist_results_with_cover_photos
+
+        enrich_craigslist_results_with_cover_photos(results)
+
     if not results:
         return [], "No craigslist listings found for this area"
     return results, None
@@ -552,7 +648,9 @@ def search_all_sources(profile: StudentProfile) -> dict:
         else:
             results, error = searcher(parsed, max_rent)
         sources_searched.append(name)
-        if error and not results:
+        if error and results:
+            errors[name] = error
+        elif error and not results:
             errors[name] = error
 
         filtered = _apply_commute_filter(
@@ -567,6 +665,22 @@ def search_all_sources(profile: StudentProfile) -> dict:
                 f"No listings within {max_commute_minutes} min "
                 f"{commute_mode} of campus"
             )
+        elif campus_coords and filtered:
+            outside = sum(
+                1
+                for r in filtered
+                if r.commute_minutes is not None
+                and r.commute_minutes > max_commute_minutes
+            )
+            if outside:
+                commute_note = (
+                    f"Including {outside} closest listing(s) outside your "
+                    f"{max_commute_minutes} min {commute_mode} limit"
+                )
+                if name in errors:
+                    errors[name] = f"{errors[name]} · {commute_note}"
+                else:
+                    errors[name] = commute_note
 
         capped = filtered[:MAX_RESULTS_PER_SOURCE]
         if max_rent:

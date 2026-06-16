@@ -23,7 +23,7 @@ APARTMENTS_COM_LISTING_LEGACY_RE = re.compile(
     re.I,
 )
 
-APARTMENTS_COM_DETAIL_ID_RE = re.compile(r"^[a-z0-9]{6,8}$", re.I)
+APARTMENTS_COM_DETAIL_ID_RE = re.compile(r"^[a-z0-9]{6,16}$", re.I)
 APARTMENTS_COM_DETAIL_ID_LEGACY_RE = re.compile(r"^\d{5,}$")
 
 APARTMENTS_COM_SEARCH_SEGMENT_MARKERS = (
@@ -76,6 +76,18 @@ def canonicalize_apartments_com_listing_url(url: str) -> str:
     parts = [p for p in parsed.path.split("/") if p]
     if not parts:
         return url.strip()
+
+    if len(parts) >= 2 and (
+        APARTMENTS_COM_DETAIL_ID_RE.match(parts[-1])
+        or APARTMENTS_COM_DETAIL_ID_LEGACY_RE.match(parts[-1])
+    ):
+        listing_id = parts[-1]
+        slug = parts[-2]
+        slug = re.sub(r"-[a-z]{2}-\d+$", "", slug, flags=re.I)
+        slug = re.sub(r"[^a-z0-9]+", "-", slug.lower()).strip("-")
+        slug = re.sub(r"-+", "-", slug)
+        parts = [slug, listing_id]
+
     clean_path = "/" + "/".join(parts) + "/"
     host = parsed.netloc.lower() or "www.apartments.com"
     if "apartments.com" not in host:

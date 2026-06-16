@@ -51,9 +51,11 @@ export interface Apartment {
   analysis: ListingAnalysis | null
   photos: string[]
   sourceSite: string | null
+  isFavorite: boolean
   landlordContact: LandlordContact | null
   parsedAt: string | null
   createdAt: string
+  listingAddress: string
 }
 
 export interface SearchListingResult {
@@ -128,6 +130,49 @@ function landlordContactFromApi(data: unknown): LandlordContact | null {
   }
 }
 
+export function extractListingAddress(rawText: string): string {
+  const match = rawText.match(/^Address:\s*(.+)$/im)
+  return match?.[1]?.trim() ?? ''
+}
+
+function looksLikeCampusLabel(value: string): boolean {
+  const lower = value.toLowerCase()
+  return (
+    lower.includes('campus') ||
+    lower.includes('university') ||
+    lower.includes('homewood') ||
+    lower.startsWith('near ')
+  )
+}
+
+/** Prefer street address from raw text over vague analysis.location for maps. */
+export function mapLocationForApartment(apartment: Apartment): string {
+  const fromRaw =
+    apartment.listingAddress || extractListingAddress(apartment.rawText)
+  if (fromRaw) return fromRaw
+
+  const analysisLocation = apartment.analysis?.location?.trim() ?? ''
+  if (analysisLocation && !looksLikeCampusLabel(analysisLocation)) {
+    return analysisLocation
+  }
+
+  return ''
+}
+
+export function listingTitleFromApartment(
+  apartment: Pick<Apartment, 'title' | 'rawText' | 'analysis'>,
+): string {
+  if (apartment.title) return apartment.title
+  if (apartment.analysis?.title) return apartment.analysis.title
+  const titleLine = apartment.rawText
+    .split('\n')
+    .map((line) => line.trim())
+    .find((line) => line.startsWith('Title:'))
+  if (titleLine) return titleLine.replace(/^Title:\s*/i, '').trim()
+  const firstLine = apartment.rawText.split('\n').find((line) => line.trim())
+  return firstLine?.trim().slice(0, 120) || 'Untitled listing'
+}
+
 export function apartmentFromApi(data: Record<string, unknown>): Apartment {
   return normalizeApartment({
     id: data.id as number,
@@ -140,9 +185,11 @@ export function apartmentFromApi(data: Record<string, unknown>): Apartment {
     analysis: analysisFromApi(data.analysis),
     photos: (data.photos as string[]) ?? [],
     sourceSite: (data.source_site as string | null) ?? null,
+    isFavorite: Boolean(data.is_favorite),
     landlordContact: landlordContactFromApi(data.landlord_contact),
     parsedAt: (data.parsed_at as string | null) ?? null,
     createdAt: data.created_at as string,
+    listingAddress: (data.listing_address as string) ?? '',
   })
 }
 
@@ -159,9 +206,12 @@ export function normalizeApartment(apt: Partial<Apartment> & { id: number }): Ap
     analysis: apt.analysis ? analysisFromApi(apt.analysis) : null,
     photos: Array.isArray(apt.photos) ? apt.photos : [],
     sourceSite: apt.sourceSite ?? null,
+    isFavorite: apt.isFavorite ?? false,
     landlordContact: apt.landlordContact ?? null,
     parsedAt: apt.parsedAt ?? null,
     createdAt: apt.createdAt ?? new Date().toISOString(),
+    listingAddress:
+      apt.listingAddress ?? extractListingAddress(apt.rawText ?? ''),
   }
 }
 

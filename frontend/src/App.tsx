@@ -1,39 +1,62 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AddApartmentModal } from '@/components/apartments/AddApartmentModal'
+import {
+  ProtectedRoute,
+  PublicOnlyRoute,
+} from '@/components/auth/ProtectedRoute'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { ToastContainer } from '@/components/ui/ToastContainer'
 import { ApartmentsProvider } from '@/context/ApartmentsContext'
+import { AuthProvider } from '@/context/AuthContext'
 import { StudentProfileProvider } from '@/context/StudentProfileContext'
 import { ToastProvider } from '@/context/ToastContext'
 import { AnalyticsPage } from '@/pages/AnalyticsPage'
 import { HomePage } from '@/pages/HomePage'
 import { HuntingBoardPage } from '@/pages/HuntingBoardPage'
 import { ListingDetailPage } from '@/pages/ListingDetailPage'
+import { LoginPage } from '@/pages/LoginPage'
 import { ProfilePage } from '@/pages/ProfilePage'
+import { RegisterPage } from '@/pages/RegisterPage'
 import { SettingsPage } from '@/pages/SettingsPage'
+
+function AuthenticatedApp() {
+  return (
+    <StudentProfileProvider>
+      <ApartmentsProvider>
+        <DashboardLayout />
+        <AddApartmentModal />
+      </ApartmentsProvider>
+    </StudentProfileProvider>
+  )
+}
 
 export default function App() {
   return (
-    <ToastProvider>
-      <StudentProfileProvider>
-        <ApartmentsProvider>
-          <BrowserRouter>
-            <Routes>
-              <Route element={<DashboardLayout />}>
+    <AuthProvider>
+      <ToastProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route element={<PublicOnlyRoute />}>
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
+            </Route>
+
+            <Route element={<ProtectedRoute />}>
+              <Route element={<AuthenticatedApp />}>
                 <Route index element={<HomePage />} />
                 <Route path="profile" element={<ProfilePage />} />
                 <Route path="board/:id" element={<ListingDetailPage />} />
                 <Route path="board" element={<HuntingBoardPage />} />
                 <Route path="analytics" element={<AnalyticsPage />} />
                 <Route path="settings" element={<SettingsPage />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
               </Route>
-            </Routes>
-            <AddApartmentModal />
-            <ToastContainer />
-          </BrowserRouter>
-        </ApartmentsProvider>
-      </StudentProfileProvider>
-    </ToastProvider>
+            </Route>
+
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+          <ToastContainer />
+        </BrowserRouter>
+      </ToastProvider>
+    </AuthProvider>
   )
 }

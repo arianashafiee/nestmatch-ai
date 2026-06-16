@@ -70,6 +70,36 @@ def _looks_like_street(text: str) -> bool:
     return bool(re.match(r"^\d+\s", text.strip()))
 
 
+STREET_SUFFIX = (
+    r"(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Way|"
+    r"Court|Ct|Place|Pl|Parkway|Pkwy|Circle|Cir|Terrace|Ter)\.?"
+)
+
+
+def _split_street_and_city(combined: str) -> tuple[str, str]:
+    """Split '3400 North Charles Street Baltimore' into street + city."""
+    text = combined.strip()
+    match = re.match(rf"^(\d+\s+.*?{STREET_SUFFIX})\s+(.+)$", text, re.I)
+    if match:
+        return match.group(1).strip(), match.group(2).strip()
+    return text, ""
+
+
+def _parse_state_zip(part: str) -> tuple[str, str]:
+    """Parse 'MD 21218' or 'Maryland' into (state abbrev, zip)."""
+    token = part.strip()
+    state_zip = re.match(r"^([A-Za-z]{2})\b(?:\s+(\d{5})(?:-\d{4})?)?\s*$", token)
+    if state_zip:
+        state = _normalize_state(state_zip.group(1))
+        zip_code = state_zip.group(2) or ""
+        if state in VALID_STATE_ABBREVS:
+            return state, zip_code
+    state = _normalize_state(token.split()[0])
+    zip_match = re.search(r"\b(\d{5})(?:-\d{4})?\b", token)
+    zip_code = zip_match.group(1) if zip_match else ""
+    return state, zip_code
+
+
 @dataclass
 class ParsedLocation:
     raw: str
@@ -123,23 +153,15 @@ def parse_campus_location(text: str) -> ParsedLocation:
             zip_code = zip_match.group(1)
     elif len(parts) == 2:
         left, right = parts
-        right_state = re.match(r"^([A-Za-z]{2})\b(?:\s+(\d{5}))?", right.strip())
-        if right_state:
+        state, zip_code = _parse_state_zip(right)
+
+        if state in VALID_STATE_ABBREVS and _looks_like_street(left):
+            street, city = _split_street_and_city(left)
+            if not city:
+                city = left
+                street = ""
+        elif state in VALID_STATE_ABBREVS:
             city = left
-            state = _normalize_state(right_state.group(1))
-            zip_code = right_state.group(2) or ""
-        elif _looks_like_street(left):
-            street = left
-            city_state = re.match(
-                r"^(.+?)\s+([A-Za-z]{2})(?:\s+(\d{5}))?\s*$", right.strip()
-            )
-            if city_state:
-                city = city_state.group(1).strip()
-                state = _normalize_state(city_state.group(2))
-                zip_code = city_state.group(3) or ""
-            else:
-                city = right
-                state = _normalize_state(right.split()[0])
         else:
             city = left
             state = _normalize_state(right.split()[0])
@@ -163,6 +185,23 @@ def parse_campus_location(text: str) -> ParsedLocation:
     if state and state not in VALID_STATE_ABBREVS:
         state = ""
 
+    # Normalize common "Street City, ST ZIP" without comma before city
+    if (
+        not city
+        and street
+        and _looks_like_street(raw)
+        and "," not in raw
+    ):
+        inline_state = re.search(
+            r"\b([A-Za-z]{2})\s+(\d{5})(?:-\d{4})?\s*$",
+            raw,
+        )
+        if inline_state:
+            state = _normalize_state(inline_state.group(1))
+            zip_code = inline_state.group(2)
+            prefix = raw[: inline_state.start()].strip()
+            street, city = _split_street_and_city(prefix)
+
     return ParsedLocation(
         raw=raw,
         street=street,
@@ -170,3 +209,24 @@ def parse_campus_location(text: str) -> ParsedLocation:
         state=state,
         zip_code=zip_code,
     )
+
+
+def normalize_campus_location(text: str) -> str:
+    """Format campus addresses for reliable city/state extraction."""
+    raw = (text or "").strip()
+    if not raw:
+        return raw
+
+    parsed = parse_campus_location(raw)
+    if not parsed.is_usable_for_search:
+        return raw
+
+    if parsed.street:
+        suffix = f", {parsed.state.upper()}"
+        if parsed.zip_code:
+            suffix = f", {parsed.state.upper()} {parsed.zip_code}"
+        return f"{parsed.street}, {parsed.city}{suffix}"
+
+    if parsed.zip_code:
+        return f"{parsed.city}, {parsed.state.upper()} {parsed.zip_code}"
+    return f"{parsed.city}, {parsed.state.upper()}"

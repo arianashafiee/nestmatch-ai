@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.auth import get_current_user
 from app.database import get_db
-from app.models import ApartmentListing
-from app.routers.profile import DEFAULT_PROFILE_ID, get_or_create_profile
+from app.models import ApartmentListing, User
+from app.routers.profile import get_profile_for_user
 from app.schemas import (
     ApartmentDraftCreate,
     ApartmentResponse,
@@ -19,13 +20,28 @@ from app.services.listing_hydrate import extract_url_from_text, hydrate_listing_
 router = APIRouter(prefix="/api/apartments", tags=["apartments"])
 
 
+def _get_user_listing(
+    db: Session,
+    apartment_id: int,
+    current_user: User,
+) -> ApartmentListing:
+    profile = get_profile_for_user(db, current_user)
+    listing = db.get(ApartmentListing, apartment_id)
+    if listing is None or listing.profile_id != profile.id:
+        raise HTTPException(status_code=404, detail="Apartment not found")
+    return listing
+
+
 @router.get("", response_model=list[ApartmentResponse])
-def list_apartments(db: Session = Depends(get_db)) -> list[ApartmentListing]:
+def list_apartments(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[ApartmentListing]:
     try:
-        get_or_create_profile(db)
+        profile = get_profile_for_user(db, current_user)
         return (
             db.query(ApartmentListing)
-            .filter(ApartmentListing.profile_id == DEFAULT_PROFILE_ID)
+            .filter(ApartmentListing.profile_id == profile.id)
             .order_by(ApartmentListing.created_at.desc())
             .all()
         )
@@ -38,12 +54,16 @@ def update_apartment_status(
     apartment_id: int,
     payload: ApartmentStatusUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> ApartmentListing:
     try:
-        listing = db.get(ApartmentListing, apartment_id)
-        if listing is None:
-            raise HTTPException(status_code=404, detail="Apartment not found")
-        listing.status = payload.status
+        listing = _get_user_listing(db, apartment_id, current_user)
+        if payload.status is None and payload.is_favorite is None:
+            raise HTTPException(status_code=400, detail="No updates provided")
+        if payload.status is not None:
+            listing.status = payload.status
+        if payload.is_favorite is not None:
+            listing.is_favorite = payload.is_favorite
         db.commit()
         db.refresh(listing)
         return listing
@@ -61,10 +81,9 @@ def update_apartment_status(
 def refresh_listing_photos(
     apartment_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> ApartmentListing:
-    listing = db.get(ApartmentListing, apartment_id)
-    if listing is None:
-        raise HTTPException(status_code=404, detail="Apartment not found")
+    listing = _get_user_listing(db, apartment_id, current_user)
     if not listing.source_url:
         raise HTTPException(status_code=400, detail="No source URL to fetch photos from")
 
@@ -89,20 +108,19 @@ def refresh_listing_photos(
 def get_apartment(
     apartment_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> ApartmentListing:
-    listing = db.get(ApartmentListing, apartment_id)
-    if listing is None:
-        raise HTTPException(status_code=404, detail="Apartment not found")
-    return listing
+    return _get_user_listing(db, apartment_id, current_user)
 
 
 @router.post("", response_model=ApartmentResponse, status_code=201)
 def create_apartment_draft(
     payload: ApartmentDraftCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> ApartmentListing:
     try:
-        get_or_create_profile(db)
+        profile = get_profile_for_user(db, current_user)
         source_url = payload.source_url or extract_url_from_text(payload.raw_text)
         if source_url and detect_source_site(source_url) == "apartments.com":
             from app.services.apartments_com import canonicalize_apartments_com_listing_url
@@ -117,7 +135,7 @@ def create_apartment_draft(
             else []
         )
         listing = ApartmentListing(
-            profile_id=DEFAULT_PROFILE_ID,
+            profile_id=profile.id,
             raw_text=payload.raw_text.strip(),
             source_url=source_url,
             status="pending",
@@ -132,6 +150,24 @@ def create_apartment_draft(
                 source_url,
                 fetch_photos=True,
             )
+            if (
+                not listing.photos
+                and listing.source_site == "craigslist"
+                and source_url
+            ):
+                from app.services.craigslist import fetch_craigslist_cover_photo
+
+                cover = fetch_craigslist_cover_photo(source_url)
+                if cover:
+                    listing.photos = normalize_photo_list(
+                        cover, "craigslist", limit=5
+                    )
+            if listing.photos:
+                listing.photos = normalize_photo_list(
+                    listing.photos,
+                    listing.source_site or "",
+                    limit=20,
+                )
         elif source_url and not listing.source_site:
             listing.source_site = detect_source_site(source_url)
 
