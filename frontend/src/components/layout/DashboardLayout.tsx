@@ -1,18 +1,12 @@
 import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import {
-  BarChart3,
-  Home,
-  Kanban,
-  UserCircle,
-} from 'lucide-react'
+import { BarChart3, Home, Kanban } from 'lucide-react'
 import { Sidebar } from './Sidebar'
 import { TopNavbar } from './TopNavbar'
 import { cn } from '@/lib/utils'
 
 const mobileNavItems = [
   { to: '/', label: 'Home', icon: Home, end: true },
-  { to: '/profile', label: 'Profile', icon: UserCircle },
   { to: '/board', label: 'Board', icon: Kanban },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
 ]

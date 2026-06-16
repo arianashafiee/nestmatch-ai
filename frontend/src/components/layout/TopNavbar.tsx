@@ -1,7 +1,9 @@
-import { Link, useLocation } from 'react-router-dom'
-import { Bell, Menu, Plus, Search, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Bell, LogOut, Menu, Plus, Search, UserCircle, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { useApartments } from '@/context/ApartmentsContext'
+import { useAuth } from '@/context/AuthContext'
 import { useStudentProfile } from '@/context/StudentProfileContext'
 import { cn } from '@/lib/utils'
 
@@ -24,9 +26,39 @@ interface TopNavbarProps {
 
 export function TopNavbar({ onMenuToggle, isMobileMenuOpen }: TopNavbarProps) {
   const location = useLocation()
+  const navigate = useNavigate()
+  const { user, logout } = useAuth()
   const { profile, isProfileComplete } = useStudentProfile()
   const { openAddModal } = useApartments()
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
+  const profileMenuRef = useRef<HTMLDivElement>(null)
   const title = getPageTitle(location.pathname)
+
+  useEffect(() => {
+    if (!isProfileMenuOpen) return
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        profileMenuRef.current &&
+        !profileMenuRef.current.contains(event.target as Node)
+      ) {
+        setIsProfileMenuOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isProfileMenuOpen])
+
+  useEffect(() => {
+    setIsProfileMenuOpen(false)
+  }, [location.pathname])
+
+  const handleSignOut = () => {
+    setIsProfileMenuOpen(false)
+    logout()
+    navigate('/login')
+  }
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-4 md:px-6">
@@ -88,15 +120,54 @@ export function TopNavbar({ onMenuToggle, isMobileMenuOpen }: TopNavbarProps) {
           <Bell className="h-5 w-5" />
         </button>
 
-        <div
-          className={cn(
-            'flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold',
-            isProfileComplete
-              ? 'bg-indigo-100 text-indigo-700'
-              : 'bg-slate-100 text-slate-500',
+        <div className="relative" ref={profileMenuRef}>
+          <button
+            type="button"
+            onClick={() => setIsProfileMenuOpen((open) => !open)}
+            className={cn(
+              'flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold transition-colors hover:ring-2 hover:ring-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500',
+              isProfileComplete
+                ? 'bg-indigo-100 text-indigo-700'
+                : 'bg-slate-100 text-slate-500',
+              isProfileMenuOpen && 'ring-2 ring-indigo-500',
+            )}
+            aria-label="Profile menu"
+            aria-expanded={isProfileMenuOpen}
+            aria-haspopup="menu"
+          >
+            {profile.university ? profile.university.charAt(0).toUpperCase() : '?'}
+          </button>
+
+          {isProfileMenuOpen && (
+            <div
+              role="menu"
+              className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+            >
+              {user && (
+                <p className="truncate border-b border-slate-100 px-4 py-2.5 text-xs text-slate-500">
+                  {user.email}
+                </p>
+              )}
+              <Link
+                to="/profile"
+                role="menuitem"
+                onClick={() => setIsProfileMenuOpen(false)}
+                className="flex items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                <UserCircle className="h-4 w-4 text-slate-500" />
+                Profile settings
+              </Link>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={handleSignOut}
+                className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                <LogOut className="h-4 w-4 text-slate-500" />
+                Sign out
+              </button>
+            </div>
           )}
-        >
-          {profile.university ? profile.university.charAt(0).toUpperCase() : '?'}
         </div>
       </div>
     </header>

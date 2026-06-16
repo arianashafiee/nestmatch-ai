@@ -1,32 +1,17 @@
-import { NavLink, useNavigate } from 'react-router-dom'
-import {
-  BarChart3,
-  Home,
-  Kanban,
-  LogOut,
-  Settings,
-  UserCircle,
-} from 'lucide-react'
-import { Button } from '@/components/ui/Button'
+import { NavLink } from 'react-router-dom'
+import { BarChart3, Home, Kanban, Settings } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
 
 const navItems = [
   { to: '/', label: 'Home', icon: Home, end: true },
-  { to: '/profile', label: 'Profile', icon: UserCircle },
   { to: '/board', label: 'Hunting Board', icon: Kanban },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/settings', label: 'Settings', icon: Settings },
 ]
 
 export function Sidebar() {
-  const { user, logout } = useAuth()
-  const navigate = useNavigate()
-
-  const handleLogout = () => {
-    logout()
-    navigate('/login')
-  }
+  const { user } = useAuth()
 
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-r border-slate-200 bg-slate-50 md:flex">
@@ -58,20 +43,11 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="border-t border-slate-200 p-4 space-y-3">
-        {user && (
+      {user && (
+        <div className="border-t border-slate-200 p-4">
           <p className="truncate text-xs text-slate-600">{user.email}</p>
-        )}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-start text-slate-600"
-          onClick={handleLogout}
-        >
-          <LogOut className="h-4 w-4" />
-          Sign out
-        </Button>
-      </div>
+        </div>
+      )}
     </aside>
   )
 }
