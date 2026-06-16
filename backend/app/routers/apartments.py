@@ -12,6 +12,7 @@ from app.schemas import (
     ApartmentResponse,
     ApartmentStatusUpdate,
 )
+from app.services.image_quality import normalize_photo_list
 from app.services.listing_fetcher import detect_source_site
 from app.services.listing_hydrate import extract_url_from_text, hydrate_listing_from_url
 
@@ -107,13 +108,21 @@ def create_apartment_draft(
             from app.services.apartments_com import canonicalize_apartments_com_listing_url
 
             source_url = canonicalize_apartments_com_listing_url(source_url)
+        source_site = payload.source_site
+        if source_url and not source_site:
+            source_site = detect_source_site(source_url)
+        initial_photos = (
+            normalize_photo_list(payload.photos, source_site or "", limit=20)
+            if payload.photos
+            else []
+        )
         listing = ApartmentListing(
             profile_id=DEFAULT_PROFILE_ID,
             raw_text=payload.raw_text.strip(),
             source_url=source_url,
             status="pending",
-            photos=payload.photos[:20] if payload.photos else [],
-            source_site=payload.source_site,
+            photos=initial_photos,
+            source_site=source_site,
         )
 
         if source_url and payload.fetch_photos:

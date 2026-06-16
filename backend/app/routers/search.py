@@ -39,6 +39,9 @@ def search_listings(
                 snippet=r.snippet,
                 photos=r.photos,
                 location=r.location,
+                listing_address=r.listing_address,
+                distance_miles=r.distance_miles,
+                commute_minutes=r.commute_minutes,
                 raw_text=search_result_to_raw_text(r),
             )
             for r in data["results"]
@@ -49,7 +52,12 @@ def search_listings(
             sources_searched=data["sources_searched"],
             errors=data["errors"],
             location=data["location"],
+            search_area=data.get("search_area", ""),
             max_rent=data["max_rent"],
+            campus_geocoded=data.get("campus_geocoded", False),
+            max_commute_minutes=data.get("max_commute_minutes", 30),
+            commute_mode=data.get("commute_mode", "walking"),
+            ai_ranked=data.get("ai_ranked", False),
         )
     except HTTPException:
         raise

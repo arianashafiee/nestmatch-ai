@@ -8,6 +8,12 @@ APARTMENTS_COM_SIZE_RE = re.compile(
     re.I,
 )
 
+# Craigslist: thumbs use 50x50c, gallery uses 600x450 — always prefer gallery size
+CRAIGSLIST_IMAGE_RE = re.compile(
+    r"(https://images\d*\.craigslist\.org/[A-Za-z0-9_]+)_\d+x\d+[a-z]?\.(jpg|jpeg|png|webp)",
+    re.I,
+)
+
 APARTMENTS_COM_MAX_IMAGE_WIDTH = 1280
 
 # Rent.com: t_3x2_fixed_webp_md -> xl (largest common variant)
@@ -19,6 +25,16 @@ RENT_COM_SIZE_RE = re.compile(
 # Cloudinary / RentCafe: bump width in transform chain
 RENTCAFE_WIDTH_RE = re.compile(r"w_\d+")
 RENTCAFE_WIDTH_RE2 = re.compile(r",w_\d+,")
+
+
+def upgrade_craigslist_image(url: str) -> str:
+    if "craigslist.org" not in url.lower():
+        return url
+    match = CRAIGSLIST_IMAGE_RE.search(url)
+    if not match:
+        return url
+    ext = match.group(2) or "jpg"
+    return f"{match.group(1)}_600x450.{ext}"
 
 
 def upgrade_apartments_com_image(url: str) -> str:
@@ -58,6 +74,9 @@ def rent_com_photo_url(photo_id: str, variant: str = "xl") -> str:
 
 def _image_dedupe_key(url: str) -> str:
     lower = url.lower()
+    m = re.search(r"images\d*\.craigslist\.org/([a-z0-9_]+)_", lower)
+    if m:
+        return f"craigslist:{m.group(1)}"
     m = re.search(r"/img_([a-f0-9]+)/", lower)
     if m:
         return f"apartments:{m.group(1)}"
@@ -72,6 +91,8 @@ def _image_dedupe_key(url: str) -> str:
 
 def normalize_photo_url(url: str, source_site: str = "") -> str:
     site = (source_site or "").lower()
+    if "craigslist.org" in url.lower() or site == "craigslist":
+        return upgrade_craigslist_image(url)
     if "apartments.com" in url.lower() or site == "apartments.com":
         return upgrade_apartments_com_image(url)
     if "rent.com" in url.lower() or "rentcafe.com" in url.lower() or site == "rent.com":

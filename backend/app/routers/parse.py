@@ -68,11 +68,7 @@ def parse_listing_endpoint(
         else:
             apartment.status = "interested"
 
-        if source_url and (
-            not apartment.photos
-            or len(apartment.photos) == 0
-            or not apartment.landlord_contact
-        ):
+        if source_url:
             listing_text = hydrate_listing_from_url(
                 apartment,
                 listing_text,

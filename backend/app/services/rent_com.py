@@ -49,8 +49,122 @@ def _rent_from_prices(prices: dict) -> Optional[float]:
     return float(high) if high is not None else None
 
 
+def _listing_url_from_id(html: str, base_url: str, listing_id: str) -> str:
+    match = re.search(
+        rf'href="(/apartment/[^"]*{re.escape(listing_id)})"',
+        html,
+        re.I,
+    )
+    if match:
+        return urljoin(base_url, match.group(1))
+    return ""
+
+
+def _parse_next_data_search(html: str, base_url: str) -> list[dict]:
+    """Primary path: Rent.com embeds search cards in __NEXT_DATA__."""
+    soup = BeautifulSoup(html, "lxml")
+    script = soup.find("script", id="__NEXT_DATA__")
+    if not script or not script.string:
+        return []
+
+    try:
+        data = json.loads(script.string)
+        page_location = (
+            data.get("props", {})
+            .get("pageProps", {})
+            .get("pageData", {})
+            .get("location", {})
+        )
+        search = page_location.get("listingSearch", {}).get(
+            "filterMatchResults", []
+        )
+        listings_by_id = {
+            str(item.get("id", "")): item
+            for item in page_location.get("listingSearch", {}).get("listings", [])
+            if isinstance(item, dict) and item.get("id")
+        }
+    except (json.JSONDecodeError, TypeError, AttributeError):
+        return []
+
+    results: list[dict] = []
+    seen_urls: set[str] = set()
+    for item in search:
+        if not isinstance(item, dict):
+            continue
+        listing_id = str(item.get("listingId", ""))
+        if not listing_id:
+            continue
+        listing_url = _listing_url_from_id(html, base_url, listing_id)
+        if not listing_url or listing_url in seen_urls:
+            continue
+        seen_urls.add(listing_url)
+
+        listing_meta = listings_by_id.get(listing_id, {})
+        location_meta = listing_meta.get("location") or {}
+        latitude = location_meta.get("lat")
+        longitude = location_meta.get("lng")
+        listing_address = listing_meta.get("addressFull") or listing_meta.get("address")
+
+        prices = item.get("prices", {})
+        snippet_parts = []
+        if isinstance(prices, dict):
+            low = prices.get("low")
+            high = prices.get("high")
+            if low and high:
+                snippet_parts.append(f"${int(low)} – ${int(high)}/mo")
+            elif low:
+                snippet_parts.append(f"From ${int(low)}/mo")
+
+        beds = item.get("beds", {})
+        baths = item.get("baths", {})
+        if isinstance(beds, dict) and beds.get("low") is not None:
+            snippet_parts.append(
+                f"{beds.get('low', '?')}–{beds.get('high', '?')} bed"
+            )
+        if isinstance(baths, dict) and baths.get("low") is not None:
+            snippet_parts.append(
+                f"{baths.get('low', '?')}–{baths.get('high', '?')} bath"
+            )
+
+        photos: list[str] = []
+        chunk = html[html.find(listing_id) : html.find(listing_id) + 5000]
+        ld_match = re.search(
+            r'<script type="application/ld\+json">(.*?)</script>',
+            chunk,
+            re.S,
+        )
+        if ld_match:
+            try:
+                ld = json.loads(ld_match.group(1))
+                photos = normalize_photo_list(
+                    _parse_ld_json_images(ld), "rent.com", limit=5
+                )
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        results.append(
+            {
+                "title": str(item.get("name") or listing_meta.get("name") or "Rent.com listing"),
+                "url": listing_url,
+                "snippet": " · ".join(snippet_parts),
+                "photos": photos,
+                "rent": _rent_from_prices(prices if isinstance(prices, dict) else {}),
+                "bedrooms": beds.get("low") if isinstance(beds, dict) else None,
+                "bathrooms": baths.get("low") if isinstance(baths, dict) else None,
+                "latitude": float(latitude) if latitude is not None else None,
+                "longitude": float(longitude) if longitude is not None else None,
+                "listing_address": str(listing_address) if listing_address else "",
+            }
+        )
+    return results
+
+
 def parse_rent_com_search(html: str, base_url: str) -> list[dict]:
     """Parse rent.com search results from embedded JSON-LD and listing links."""
+    next_results = _parse_next_data_search(html, base_url)
+    if next_results:
+        return next_results[:12]
+
     soup = BeautifulSoup(html, "lxml")
     results: list[dict] = []
     seen_urls: set[str] = set()

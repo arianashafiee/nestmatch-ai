@@ -124,6 +124,9 @@ class SearchListingItem(BaseModel):
     snippet: str = ""
     photos: list[str] = []
     location: str = ""
+    listing_address: str = ""
+    distance_miles: Optional[float] = None
+    commute_minutes: Optional[int] = None
     raw_text: str = ""
 
 
@@ -132,7 +135,12 @@ class SearchListingsResponse(BaseModel):
     sources_searched: list[str]
     errors: dict[str, str] = {}
     location: str = ""
+    search_area: str = ""
     max_rent: float = 0
+    campus_geocoded: bool = False
+    max_commute_minutes: int = 30
+    commute_mode: CommuteModeLiteral = "walking"
+    ai_ranked: bool = False
 
 
 class AppConfigResponse(BaseModel):

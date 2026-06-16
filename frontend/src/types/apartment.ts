@@ -66,6 +66,9 @@ export interface SearchListingResult {
   snippet: string
   photos: string[]
   location: string
+  listingAddress: string
+  distanceMiles: number | null
+  commuteMinutes: number | null
   rawText: string
 }
 
@@ -74,7 +77,12 @@ export interface SearchListingsResponse {
   sourcesSearched: string[]
   errors: Record<string, string>
   location: string
+  searchArea: string
   maxRent: number
+  campusGeocoded: boolean
+  maxCommuteMinutes: number
+  commuteMode: 'walking' | 'transit' | 'biking'
+  aiRanked: boolean
 }
 
 function analysisFromApi(data: unknown): ListingAnalysis | null {
@@ -170,6 +178,9 @@ export function searchResultFromApi(
     snippet: (data.snippet as string) ?? '',
     photos: (data.photos as string[]) ?? [],
     location: (data.location as string) ?? '',
+    listingAddress: (data.listing_address as string) ?? '',
+    distanceMiles: (data.distance_miles as number | null) ?? null,
+    commuteMinutes: (data.commute_minutes as number | null) ?? null,
     rawText: (data.raw_text as string) ?? '',
   }
 }

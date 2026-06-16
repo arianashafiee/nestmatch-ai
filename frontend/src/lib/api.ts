@@ -101,7 +101,12 @@ export async function searchListings(
     sourcesSearched: (data.sources_searched as string[]) ?? [],
     errors: (data.errors as Record<string, string>) ?? {},
     location: (data.location as string) ?? '',
+    searchArea: (data.search_area as string) ?? '',
     maxRent: Number(data.max_rent ?? 0),
+    campusGeocoded: Boolean(data.campus_geocoded),
+    maxCommuteMinutes: Number(data.max_commute_minutes ?? 30),
+    commuteMode: (data.commute_mode as SearchListingsResponse['commuteMode']) ?? 'walking',
+    aiRanked: Boolean(data.ai_ranked),
   }
 }
 
@@ -163,6 +168,29 @@ export async function fetchAppConfig(): Promise<AppConfig> {
       'mapbox://styles/mapbox/streets-v12',
     database: (data.database as string) ?? 'disconnected',
     searchSources: (data.search_sources as string[]) ?? [],
+  }
+}
+
+export interface ConfigValidation {
+  openaiConfigured: boolean
+  openaiWorking: boolean
+  openaiError: string | null
+  mapboxConfigured: boolean
+  mapboxWorking: boolean
+  mapboxError: string | null
+  envFile: string
+}
+
+export async function validateAppConfig(): Promise<ConfigValidation> {
+  const data = await request<Record<string, unknown>>('/config/validate')
+  return {
+    openaiConfigured: Boolean(data.openai_configured),
+    openaiWorking: Boolean(data.openai_working),
+    openaiError: (data.openai_error as string | null) ?? null,
+    mapboxConfigured: Boolean(data.mapbox_configured),
+    mapboxWorking: Boolean(data.mapbox_working),
+    mapboxError: (data.mapbox_error as string | null) ?? null,
+    envFile: (data.env_file as string) ?? '',
   }
 }
 

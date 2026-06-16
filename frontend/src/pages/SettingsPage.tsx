@@ -9,7 +9,7 @@ import {
   Sparkles,
   XCircle,
 } from 'lucide-react'
-import { fetchAppConfig, type AppConfig } from '@/lib/api'
+import { fetchAppConfig, validateAppConfig, type AppConfig, type ConfigValidation } from '@/lib/api'
 
 function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
   return (
@@ -32,12 +32,18 @@ function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
 
 export function SettingsPage() {
   const [config, setConfig] = useState<AppConfig | null>(null)
+  const [validation, setValidation] = useState<ConfigValidation | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     fetchAppConfig()
       .then(setConfig)
       .catch(() => setError('Could not reach the backend. Start the API on port 8000.'))
+    validateAppConfig()
+      .then(setValidation)
+      .catch(() => {
+        /* validation is optional if backend is down */
+      })
   }, [])
 
   return (
@@ -64,23 +70,41 @@ export function SettingsPage() {
               label={`Database ${config.database}`}
             />
             <StatusBadge
-              ok={config.aiMode === 'openai'}
+              ok={validation?.openaiWorking ?? config.aiMode === 'openai'}
               label={
-                config.aiMode === 'openai'
-                  ? 'AI parsing (OpenAI)'
-                  : 'AI parsing (mock — no OpenAI key)'
+                validation?.openaiWorking
+                  ? 'OpenAI connected'
+                  : validation?.openaiConfigured
+                    ? 'OpenAI key set but not working'
+                    : config.aiMode === 'openai'
+                      ? 'AI parsing (OpenAI)'
+                      : 'AI parsing (mock — no OpenAI key)'
               }
             />
             <StatusBadge
-              ok={config.mapboxConfigured}
+              ok={validation?.mapboxWorking ?? config.mapboxConfigured}
               label={
-                config.mapboxConfigured
-                  ? 'Mapbox maps enabled'
-                  : 'Mapbox not configured'
+                validation?.mapboxWorking
+                  ? 'Mapbox geocoding working'
+                  : validation?.mapboxConfigured
+                    ? 'Mapbox token set but not working'
+                    : config.mapboxConfigured
+                      ? 'Mapbox maps enabled'
+                      : 'Mapbox not configured'
               }
             />
             <StatusBadge ok label="Apartment search (no API key)" />
           </div>
+          {validation && (validation.openaiError || validation.mapboxError) && (
+            <div className="mt-3 space-y-1 text-xs text-amber-800">
+              {validation.openaiError && !validation.openaiWorking && (
+                <p>OpenAI: {validation.openaiError}</p>
+              )}
+              {validation.mapboxError && !validation.mapboxWorking && (
+                <p>Mapbox: {validation.mapboxError}</p>
+              )}
+            </div>
+          )}
         </section>
       )}
 
@@ -120,7 +144,9 @@ export function SettingsPage() {
                 OPENAI_API_KEY
               </code>
               , listing analysis uses GPT for richer pros/cons and follow-up
-              questions.
+              questions. During apartment search, OpenAI also ranks and summarizes
+              listings already found by our scrapers — it does not browse rental
+              sites on its own.
             </p>
             <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-600">
               <li>
@@ -234,6 +260,13 @@ MAPBOX_STYLE_URL=mapbox://styles/mapbox/streets-v12`}
                 </tr>
                 <tr className="border-b border-slate-100">
                   <td className="py-2 pr-4">AI compatibility scoring</td>
+                  <td className="py-2 pr-4">Optional</td>
+                  <td className="py-2">
+                    <code className="text-xs">OPENAI_API_KEY</code>
+                  </td>
+                </tr>
+                <tr className="border-b border-slate-100">
+                  <td className="py-2 pr-4">AI search ranking (after scrape)</td>
                   <td className="py-2 pr-4">Optional</td>
                   <td className="py-2">
                     <code className="text-xs">OPENAI_API_KEY</code>

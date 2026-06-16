@@ -44,6 +44,8 @@ def photo_request_headers(image_url: str, source_site: str = "") -> dict[str, st
         headers["Referer"] = "https://www.apartments.com/"
     elif "rent.com" in lower or "rentcafe.com" in lower or site == "rent.com":
         headers["Referer"] = "https://www.rent.com/"
+    elif "craigslist.org" in lower or site == "craigslist":
+        headers["Referer"] = "https://www.craigslist.org/"
     return headers
 
 SKIP_IMAGE_PATTERNS = (
@@ -101,6 +103,8 @@ def _is_valid_image_url(url: str) -> bool:
     if any(p in lower for p in SKIP_IMAGE_PATTERNS):
         return False
     if "apartments.com" in lower and ("/img_" in lower or "/116/" in lower or ".jpg" in lower):
+        return True
+    if "craigslist.org" in lower and "images.craigslist.org" in lower:
         return True
     return lower.endswith(
         (".jpg", ".jpeg", ".png", ".webp", ".gif")
@@ -274,6 +278,10 @@ def fetch_listing_from_url(url: str, timeout: float = 20.0) -> FetchedListing:
         from app.services.rent_com import parse_rent_com_listing
 
         parsed_site_data = parse_rent_com_listing(html, final_url)
+    elif result.source_site == "craigslist":
+        from app.services.craigslist import parse_craigslist_listing
+
+        parsed_site_data = parse_craigslist_listing(html, final_url)
 
     if parsed_site_data:
         if parsed_site_data.get("title"):
@@ -293,16 +301,17 @@ def fetch_listing_from_url(url: str, timeout: float = 20.0) -> FetchedListing:
         result.contact_url = parsed_site_data.get("contact_url") or final_url
 
     seen: set[str] = set(result.photos)
-    for extractor in (
-        _extract_meta_images,
-        _extract_json_ld_images,
-        lambda s, b: _extract_site_gallery(s, b, result.source_site),
-        _extract_img_tags,
-    ):
-        for photo in extractor(soup, final_url):
-            if photo not in seen:
-                seen.add(photo)
-                result.photos.append(photo)
+    if result.source_site != "craigslist":
+        for extractor in (
+            _extract_meta_images,
+            _extract_json_ld_images,
+            lambda s, b: _extract_site_gallery(s, b, result.source_site),
+            _extract_img_tags,
+        ):
+            for photo in extractor(soup, final_url):
+                if photo not in seen:
+                    seen.add(photo)
+                    result.photos.append(photo)
 
     result.photos = normalize_photo_list(
         result.photos, result.source_site, limit=25

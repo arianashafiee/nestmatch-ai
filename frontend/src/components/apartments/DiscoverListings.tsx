@@ -30,6 +30,13 @@ export function DiscoverListings({ onAdded }: DiscoverListingsProps) {
   const [results, setResults] = useState<SearchListingResult[]>([])
   const [sourcesSearched, setSourcesSearched] = useState<string[]>([])
   const [searchErrors, setSearchErrors] = useState<Record<string, string>>({})
+  const [searchArea, setSearchArea] = useState('')
+  const [searchMeta, setSearchMeta] = useState<{
+    campusGeocoded: boolean
+    maxCommuteMinutes: number
+    commuteMode: string
+    aiRanked: boolean
+  } | null>(null)
   const [addingUrl, setAddingUrl] = useState<string | null>(null)
 
   const area = profile.campusLocation || profile.university
@@ -43,6 +50,13 @@ export function DiscoverListings({ onAdded }: DiscoverListingsProps) {
       setResults(data.results)
       setSourcesSearched(data.sourcesSearched)
       setSearchErrors(data.errors)
+      setSearchArea(data.searchArea)
+      setSearchMeta({
+        campusGeocoded: data.campusGeocoded,
+        maxCommuteMinutes: data.maxCommuteMinutes,
+        commuteMode: data.commuteMode,
+        aiRanked: data.aiRanked,
+      })
       if (data.results.length === 0) {
         showToast(
           'No listings found — sites may block automated search. Try pasting a direct link.',
@@ -50,7 +64,9 @@ export function DiscoverListings({ onAdded }: DiscoverListingsProps) {
         )
       } else {
         showToast(
-          `Found ${data.results.length} listings across ${data.sourcesSearched.length} sites`,
+          data.aiRanked
+            ? `Found ${data.results.length} listings — ranked by AI for your profile`
+            : `Found ${data.results.length} listings across ${data.sourcesSearched.length} sites`,
           'success',
         )
       }
@@ -80,10 +96,12 @@ export function DiscoverListings({ onAdded }: DiscoverListingsProps) {
       <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
         <p className="font-medium">Automatic search across rental sites</p>
         <p className="mt-1 text-indigo-800">
-          NestMatch searches <strong>Apartments.com</strong>, <strong>Zillow</strong>,{' '}
-          <strong>Craigslist</strong>, and <strong>Realtor.com</strong> using your
-          campus, budget (${profile.maxRent}/mo), and preferences — then pulls photos
-          from each listing page.
+          NestMatch searches <strong>Apartments.com</strong>, <strong>Rent.com</strong>,{' '}
+          <strong>Zillow</strong>, <strong>Craigslist</strong>, and <strong>Realtor.com</strong>{' '}
+          near your campus address, filtered by your max{' '}
+          {profile.commuteMode} commute ({profile.maxCommuteMinutes} min) and budget (
+          ${profile.maxRent}/mo). With <strong>OpenAI</strong> configured, results are also
+          AI-ranked and summarized for your profile.
         </p>
       </div>
 
@@ -107,6 +125,21 @@ export function DiscoverListings({ onAdded }: DiscoverListingsProps) {
         </Button>
       )}
 
+      {searchMeta?.aiRanked && (
+        <p className="text-xs font-medium text-indigo-700">
+          Results ranked by OpenAI based on your budget, commute, and preferences.
+        </p>
+      )}
+
+      {searchMeta && searchArea && (
+        <p className="text-xs text-slate-600">
+          Searching rentals in <strong>{searchArea}</strong>
+          {searchMeta.campusGeocoded
+            ? ` within ${searchMeta.maxCommuteMinutes} min ${searchMeta.commuteMode} of your campus address.`
+            : ' (could not geocode campus — showing city-wide results).'}
+        </p>
+      )}
+
       {sourcesSearched.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {sourcesSearched.map((source) => (
@@ -120,7 +153,11 @@ export function DiscoverListings({ onAdded }: DiscoverListingsProps) {
               )}
             >
               {SOURCE_LABELS[source] ?? source}
-              {searchErrors[source] ? ' — limited' : ' ✓'}
+              {searchErrors[source]
+                ? ' — limited'
+                : results.some((r) => r.sourceSite === source)
+                  ? ' ✓'
+                  : ' — no results'}
             </span>
           ))}
         </div>
@@ -165,6 +202,17 @@ export function DiscoverListings({ onAdded }: DiscoverListingsProps) {
                       <p className="mt-1 text-sm font-medium text-indigo-600">
                         ${listing.rent.toLocaleString()}/mo
                       </p>
+                    )}
+                    {listing.commuteMinutes != null && (
+                      <p className="mt-1 text-xs font-medium text-emerald-700">
+                        ~{listing.commuteMinutes} min {profile.commuteMode} to campus
+                        {listing.distanceMiles != null
+                          ? ` (${listing.distanceMiles.toFixed(1)} mi)`
+                          : ''}
+                      </p>
+                    )}
+                    {listing.listingAddress && (
+                      <p className="mt-1 text-xs text-slate-500">{listing.listingAddress}</p>
                     )}
                     <p className="mt-1 line-clamp-2 text-sm text-slate-600">
                       {listing.snippet}
