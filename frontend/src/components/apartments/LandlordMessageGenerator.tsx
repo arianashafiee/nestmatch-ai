@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useState } from 'react'
 import { Check, Copy, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
@@ -17,6 +18,10 @@ export function LandlordMessageGenerator({
   const { profile } = useStudentProfile()
   const [copied, setCopied] = useState(false)
   const message = generateLandlordMessage(analysis, profile, landlordContact)
+  const missingContactInfo =
+    !profile.fullName.trim() ||
+    !profile.phoneNumber.trim() ||
+    !profile.preferredLeaseLength.trim()
 
   const handleCopy = async () => {
     try {
@@ -56,6 +61,15 @@ export function LandlordMessageGenerator({
           )}
         </Button>
       </div>
+      {missingContactInfo && (
+        <p className="border-b border-amber-100 bg-amber-50 px-5 py-3 text-sm text-amber-900">
+          Add your name, phone, and preferred lease length in{' '}
+          <Link to="/profile" className="font-medium text-indigo-700 underline">
+            Profile settings
+          </Link>{' '}
+          so this email includes them in the closing.
+        </p>
+      )}
       <pre className="max-h-80 overflow-auto whitespace-pre-wrap p-5 font-sans text-sm leading-relaxed text-slate-700">
         {message}
       </pre>

@@ -4,6 +4,14 @@ from typing import Optional
 from app.models import StudentProfile
 
 ADDRESS_LINE = re.compile(r"^Address:\s*(.+)$", re.I | re.M)
+STATE_ZIP_ADDRESS = re.compile(
+    r"\b(\d{1,6}\s+"
+    r"(?:[NSEW]\.?\s+)?"
+    r"[A-Za-z0-9.'\-]+(?:\s+[A-Za-z0-9.'\-]+){0,5}"
+    r"(?:,\s*(?:#|Apt|Unit|Suite)?\.?\s*[\w\-]+)?"
+    r",\s*[A-Za-z .'\-]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?)\b",
+    re.I,
+)
 STREET_ADDRESS = re.compile(
     r"\b(\d{1,6}\s+"
     r"[A-Za-z0-9.'\-]+(?:\s+[A-Za-z0-9.'\-]+){0,6}\s+"
@@ -16,23 +24,49 @@ STREET_ADDRESS = re.compile(
 )
 
 
+def _has_state_zip(value: str) -> bool:
+    return bool(re.search(r",\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?\s*$", value.strip()))
+
+
+def _looks_like_approximate_map_pin(value: str) -> bool:
+    lower = value.lower()
+    return " near " in lower and not _has_state_zip(value)
+
+
 def extract_listing_address(text: str) -> str:
     """Pull a street address from hydrated listing text or search raw_text."""
     if not text:
         return ""
 
-    line_match = ADDRESS_LINE.search(text)
-    if line_match:
-        address = line_match.group(1).strip()
+    candidates: list[str] = []
+
+    for match in ADDRESS_LINE.finditer(text):
+        address = match.group(1).strip()
         if address and not _looks_like_campus_label(address):
-            return address
+            candidates.append(address)
+
+    for match in STATE_ZIP_ADDRESS.finditer(text):
+        candidate = match.group(1).strip()
+        if candidate and not _looks_like_campus_label(candidate):
+            candidates.append(candidate)
 
     for match in STREET_ADDRESS.finditer(text):
         candidate = match.group(1).strip()
         if candidate and not _looks_like_campus_label(candidate):
+            candidates.append(candidate)
+
+    if not candidates:
+        return ""
+
+    for candidate in candidates:
+        if _has_state_zip(candidate):
             return candidate
 
-    return ""
+    for candidate in candidates:
+        if not _looks_like_approximate_map_pin(candidate):
+            return candidate
+
+    return candidates[0]
 
 
 def _looks_like_campus_label(value: str) -> bool:

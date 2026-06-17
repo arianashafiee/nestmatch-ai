@@ -49,7 +49,10 @@ function isComplete(profile: StudentProfile): boolean {
   return (
     profile.university.trim().length > 0 &&
     profile.campusLocation.trim().length > 0 &&
-    profile.maxRent > 0
+    profile.maxRent > 0 &&
+    profile.fullName.trim().length > 0 &&
+    profile.phoneNumber.trim().length > 0 &&
+    profile.preferredLeaseLength.trim().length > 0
   )
 }
 

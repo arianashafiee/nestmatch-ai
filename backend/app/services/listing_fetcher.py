@@ -50,9 +50,60 @@ def photo_request_headers(image_url: str, source_site: str = "") -> dict[str, st
         headers["Referer"] = "https://www.rent.com/"
     elif "craigslist.org" in lower or site == "craigslist":
         headers["Referer"] = "https://www.craigslist.org/"
+    elif "offcampusimages.com" in lower or site == "jhu_housing":
+        headers["Referer"] = "https://offcampushousing.jhu.edu/"
     return headers
 
+
+def photo_source_site(image_url: str) -> str:
+    if "offcampusimages.com" in image_url.lower():
+        return "jhu_housing"
+    return detect_source_site(image_url)
+
+
+def fetch_proxied_photo(url: str, timeout: float = 15.0) -> tuple[bytes, str]:
+    """Fetch image bytes for the photo proxy (TLS-aware for hotlink-protected CDNs)."""
+    from app.services.image_quality import normalize_photo_url
+
+    site = photo_source_site(url)
+    target = normalize_photo_url(url, site)
+    headers = photo_request_headers(target, site)
+
+    try:
+        from curl_cffi import requests as curl_requests
+
+        response = curl_requests.get(
+            target,
+            headers=headers,
+            timeout=timeout,
+            allow_redirects=True,
+            impersonate="chrome131",
+        )
+        response.raise_for_status()
+        content_type = response.headers.get("content-type", "image/jpeg")
+        if "image" not in content_type and "svg" not in content_type:
+            content_type = "image/jpeg"
+        return response.content, content_type
+    except ImportError:
+        pass
+    except Exception:
+        pass
+
+    with httpx.Client(
+        headers=headers,
+        timeout=timeout,
+        follow_redirects=True,
+    ) as client:
+        response = client.get(target)
+        response.raise_for_status()
+        content_type = response.headers.get("content-type", "image/jpeg")
+        if "image" not in content_type and "svg" not in content_type:
+            content_type = "image/jpeg"
+        return response.content, content_type
+
+
 SKIP_IMAGE_PATTERNS = (
+    "cdn.offcampusimages.com/public/upload",
     "logo",
     "icon",
     "sprite",
@@ -95,6 +146,8 @@ def detect_source_site(url: str) -> str:
         return "realtor.com"
     if "rent.com" in host:
         return "rent.com"
+    if "offcampushousing.jhu.edu" in host:
+        return "jhu_housing"
     if "facebook.com" in host or "fb.com" in host:
         return "facebook"
     return "other"
@@ -107,6 +160,8 @@ def _is_valid_image_url(url: str) -> bool:
     if any(p in lower for p in SKIP_IMAGE_PATTERNS):
         return False
     if "i.rent.com" in lower:
+        return True
+    if "img.offcampusimages.com" in lower:
         return True
     if "apartments.com" in lower and ("/img_" in lower or "/116/" in lower or ".jpg" in lower):
         return True
@@ -248,6 +303,28 @@ def _page_text(soup: BeautifulSoup) -> str:
     return combined[:12000]
 
 
+def _parsed_site_detail_lines(parsed: dict) -> list[str]:
+    from app.services.jhu_housing import format_jhu_listing_details
+
+    if parsed.get("lease_length") or parsed.get("availability"):
+        return format_jhu_listing_details(parsed).splitlines()
+
+    lines: list[str] = []
+    if parsed.get("address"):
+        lines.append(f"Address: {parsed['address']}")
+    if parsed.get("rent"):
+        lines.append(f"Rent: ${int(parsed['rent']):,}/mo")
+    if parsed.get("bedrooms") is not None:
+        bed_label = "Studio" if parsed["bedrooms"] == 0 else f"{parsed['bedrooms']} bed"
+        if parsed.get("bathrooms") is not None:
+            lines.append(f"Beds/Baths: {bed_label} / {parsed['bathrooms']} bath")
+        else:
+            lines.append(f"Beds: {bed_label}")
+    if parsed.get("lease_length"):
+        lines.append(f"Lease length: {parsed['lease_length']}")
+    return lines
+
+
 def fetch_listing_from_url(url: str, timeout: float = 20.0) -> FetchedListing:
     site = detect_source_site(url)
     if site == "apartments.com":
@@ -265,6 +342,14 @@ def fetch_listing_from_url(url: str, timeout: float = 20.0) -> FetchedListing:
             return result
         html = fetched.html
         final_url = fetched.url
+    elif site == "jhu_housing":
+        from app.services.jhu_housing import fetch_jhu_housing_html
+
+        try:
+            html, final_url = fetch_jhu_housing_html(url, timeout=timeout)
+        except Exception as exc:
+            result.extra_text = f"Could not fetch listing page: {exc}"
+            return result
     else:
         try:
             with httpx.Client(
@@ -298,6 +383,10 @@ def fetch_listing_from_url(url: str, timeout: float = 20.0) -> FetchedListing:
         from app.services.craigslist import parse_craigslist_listing
 
         parsed_site_data = parse_craigslist_listing(html, final_url)
+    elif result.source_site == "jhu_housing":
+        from app.services.jhu_housing import parse_jhu_housing_listing
+
+        parsed_site_data = parse_jhu_housing_listing(html, final_url)
 
     if parsed_site_data:
         if parsed_site_data.get("title"):
@@ -312,12 +401,13 @@ def fetch_listing_from_url(url: str, timeout: float = 20.0) -> FetchedListing:
             result.landlord_name = parsed_site_data["contact_name"]
         if parsed_site_data.get("description"):
             result.description = parsed_site_data["description"]
-        if parsed_site_data.get("address"):
-            result.extra_text = f"Address: {parsed_site_data['address']}"
+        detail_lines = _parsed_site_detail_lines(parsed_site_data)
+        if detail_lines:
+            result.extra_text = "\n".join(detail_lines)
         result.contact_url = parsed_site_data.get("contact_url") or final_url
 
     seen: set[str] = set(result.photos)
-    if result.source_site != "craigslist":
+    if result.source_site not in ("craigslist", "jhu_housing"):
         for extractor in (
             _extract_meta_images,
             _extract_json_ld_images,
@@ -357,12 +447,21 @@ def fetch_listing_from_url(url: str, timeout: float = 20.0) -> FetchedListing:
 
 def enrich_listing_text(raw_text: str, fetched: FetchedListing) -> str:
     parts = [raw_text.strip()]
+    if fetched.extra_text:
+        for line in fetched.extra_text.strip().splitlines():
+            cleaned = line.strip()
+            if cleaned and cleaned not in raw_text:
+                parts.append(cleaned)
+
     if fetched.title and fetched.title not in raw_text:
         parts.append(f"Title: {fetched.title}")
     if fetched.description and len(fetched.description) < 3000:
-        parts.append(fetched.description)
+        if fetched.description not in raw_text:
+            parts.append(fetched.description)
     elif fetched.extra_text and len(raw_text) < 800:
-        parts.append(fetched.extra_text[:2500])
+        desc_block = fetched.extra_text.strip()
+        if desc_block not in raw_text and desc_block not in parts:
+            parts.append(desc_block[:2500])
     if fetched.photos:
         parts.append(f"Photos available: {len(fetched.photos)} images from listing page")
     if fetched.landlord_phone:

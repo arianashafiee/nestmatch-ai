@@ -87,6 +87,7 @@ STUDENT PROFILE:
 - Roommates: {profile.roommate_count}
 - Must-haves: {", ".join(profile.must_haves or []) or "none"}
 - Dealbreakers: {", ".join(profile.dealbreakers or []) or "none"}
+- Preferred lease length: {profile.preferred_lease_length or "not specified"}
 
 LISTING TEXT:
 {listing_text}

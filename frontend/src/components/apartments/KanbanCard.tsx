@@ -5,8 +5,11 @@ import {
   GripVertical,
   MapPin,
   Star,
+  Trash2,
 } from 'lucide-react'
 import { ScoreBadge } from '@/components/apartments/ScoreBadge'
+import { formatTourDateTime } from '@/lib/tours'
+import { confirmDeleteListing } from '@/lib/listingActions'
 import { cn } from '@/lib/utils'
 import {
   getNextStatus,
@@ -19,7 +22,9 @@ import { KANBAN_COLUMNS } from '@/lib/kanban'
 interface KanbanCardProps {
   apartment: Apartment
   onMove: (id: number, status: ApartmentStatus) => void
+  onRequestTourSchedule: () => void
   onToggleFavorite: (id: number, isFavorite: boolean) => void
+  onDelete: (id: number) => void
   onDragStart: (id: number) => void
 }
 
@@ -30,7 +35,9 @@ const statusLabels = Object.fromEntries(
 export function KanbanCard({
   apartment,
   onMove,
+  onRequestTourSchedule,
   onToggleFavorite,
+  onDelete,
   onDragStart,
 }: KanbanCardProps) {
   const analysis = apartment.analysis
@@ -41,6 +48,11 @@ export function KanbanCard({
   const prev = getPreviousStatus(apartment.status)
   const next = getNextStatus(apartment.status)
   const showFavorite = apartment.status === 'interested'
+
+  const handleDelete = () => {
+    if (!confirmDeleteListing(apartment)) return
+    onDelete(apartment.id)
+  }
 
   return (
     <div
@@ -71,6 +83,14 @@ export function KanbanCard({
               </h4>
             </Link>
             <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={handleDelete}
+                className="rounded p-1 text-slate-300 transition-colors hover:bg-red-50 hover:text-red-600"
+                aria-label={`Delete ${title}`}
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
               {showFavorite && (
                 <button
                   type="button"
@@ -113,6 +133,11 @@ export function KanbanCard({
               <span className="truncate">{analysis.location}</span>
             </p>
           )}
+          {apartment.tourAt && (
+            <p className="mt-1 text-[10px] font-medium text-indigo-700">
+              Tour: {formatTourDateTime(apartment.tourAt)}
+            </p>
+          )}
           {sample && (
             <span className="mt-2 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
               Sample listing
@@ -143,7 +168,14 @@ export function KanbanCard({
         <button
           type="button"
           disabled={!next}
-          onClick={() => next && onMove(apartment.id, next)}
+          onClick={() => {
+            if (!next) return
+            if (next === 'tour_scheduled' && !apartment.tourAt) {
+              onRequestTourSchedule()
+              return
+            }
+            onMove(apartment.id, next)
+          }}
           className={cn(
             'rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700',
             !next && 'invisible',

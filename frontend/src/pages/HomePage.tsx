@@ -2,18 +2,16 @@ import { Link } from 'react-router-dom'
 import {
   ArrowRight,
   Kanban,
-  Plus,
   Sparkles,
   UserCircle,
 } from 'lucide-react'
 import { ApartmentCard } from '@/components/apartments/ApartmentCard'
-import { Button } from '@/components/ui/Button'
 import { useApartments } from '@/context/ApartmentsContext'
 import { useStudentProfile } from '@/context/StudentProfileContext'
 
 export function HomePage() {
   const { profile, isProfileComplete } = useStudentProfile()
-  const { apartments, parsingIds, openAddModal } = useApartments()
+  const { apartments, parsingIds } = useApartments()
 
   const topMatches = [...apartments]
     .filter((a) => a.analysis)
@@ -23,26 +21,20 @@ export function HomePage() {
   return (
     <div className="mx-auto max-w-4xl space-y-8">
       <section className="rounded-2xl border border-slate-200 bg-gradient-to-br from-indigo-50 to-white p-6 md:p-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex items-start gap-3">
-            <div className="rounded-xl bg-indigo-600 p-2.5 text-white">
-              <Sparkles className="h-6 w-6" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-semibold text-slate-900">
-                Welcome to NestMatch AI
-              </h2>
-              <p className="mt-2 max-w-xl text-slate-600">
-                NestMatch searches Apartments.com, Zillow, Craigslist, and
-                Realtor.com for your campus and budget — or paste any listing URL
-                to pull photos and score it automatically.
-              </p>
-            </div>
+        <div className="flex items-start gap-3">
+          <div className="rounded-xl bg-indigo-600 p-2.5 text-white">
+            <Sparkles className="h-6 w-6" />
           </div>
-          <Button onClick={openAddModal} className="shrink-0">
-            <Plus className="h-4 w-4" />
-            Find Apartments
-          </Button>
+          <div>
+            <h2 className="text-2xl font-semibold text-slate-900">
+              Welcome to NestMatch AI
+            </h2>
+            <p className="mt-2 max-w-xl text-slate-600">
+              NestMatch searches JHU Off-Campus Housing, Apartments.com, Zillow, Craigslist, and
+              Realtor.com for your campus and budget — or paste any listing URL
+              to pull photos and score it automatically.
+            </p>
+          </div>
         </div>
       </section>
 

@@ -91,6 +91,9 @@ def _image_dedupe_key(url: str) -> str:
     m = re.search(r"/img_([a-f0-9]+)/", lower)
     if m:
         return f"apartments:{m.group(1)}"
+    m = re.search(r"img\.offcampusimages\.com/[^/]+/[^/]+/[^/]+/[^/]+/images/([^/?]+)", lower)
+    if m:
+        return f"offcampus:{m.group(1)}"
     m = re.search(r"/([\da-f]{20,})(?:\?|$)", lower)
     if m and "rent.com" in lower:
         return f"rent:{m.group(1)}"
@@ -120,6 +123,15 @@ def normalize_photo_url(url: str, source_site: str = "") -> str:
     return url
 
 
+def _skip_photo_url(raw: str) -> bool:
+    lower = raw.lower()
+    if "cdn.offcampusimages.com" in lower and lower.endswith(".svg"):
+        return True
+    if "/public/upload/" in lower and lower.endswith(".svg"):
+        return True
+    return False
+
+
 def normalize_photo_list(
     photos: list[str], source_site: str = "", limit: int = 25
 ) -> list[str]:
@@ -128,6 +140,8 @@ def normalize_photo_list(
     out: list[str] = []
     for raw in photos:
         if not raw or not isinstance(raw, str):
+            continue
+        if _skip_photo_url(raw):
             continue
         url = normalize_photo_url(raw.strip(), source_site)
         key = _image_dedupe_key(url)

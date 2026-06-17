@@ -18,6 +18,8 @@ export function AddApartmentModal() {
     addApartment,
     isSubmitting,
     submitError,
+    isListingSearchInProgress,
+    listingSearch,
   } = useApartments()
   const { isProfileComplete } = useStudentProfile()
 
@@ -88,7 +90,11 @@ export function AddApartmentModal() {
                 Find Apartments
               </h2>
               <p className="text-sm text-slate-500">
-                Search near campus or add a listing you found
+                {isListingSearchInProgress
+                  ? 'Search running in the background — close anytime and reopen to view results'
+                  : listingSearch?.results.length
+                    ? `${listingSearch.results.length} saved listings — search near campus or add a link`
+                    : 'Search near campus or add a listing you found'}
               </p>
             </div>
           </div>
@@ -150,8 +156,8 @@ export function AddApartmentModal() {
           ) : (
             <>
               <p className="mb-4 text-sm text-slate-600">
-                Paste a listing URL from Apartments.com, Rent.com, Craigslist, Zillow, or
-                copy the description. NestMatch will pull <strong>all photos</strong>{' '}
+                Paste a listing URL from JHU Off-Campus Housing, Apartments.com, Rent.com,
+                Craigslist, Zillow, or copy the description. NestMatch will pull <strong>all photos</strong>{' '}
                 from the page automatically.
               </p>
               <Textarea

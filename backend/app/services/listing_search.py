@@ -532,6 +532,39 @@ def search_realtor(
     return results, error
 
 
+def search_jhu_housing(
+    parsed: ParsedLocation, max_rent: float, commute_mode: str = "walking"
+) -> tuple[list[SearchResult], Optional[str]]:
+    from app.services.jhu_housing import (
+        compute_homewood_commute_minutes,
+        search_jhu_housing as load_jhu_listings,
+    )
+
+    items, error = load_jhu_listings(parsed, max_rent)
+    if not items:
+        return [], error or "No JHU off-campus housing listings found"
+
+    results: list[SearchResult] = []
+    for item in items:
+        distance = item.get("distance_miles")
+        commute_min = None
+        if distance is not None:
+            commute_min = compute_homewood_commute_minutes(float(distance), commute_mode)
+        results.append(
+            _item_to_search_result(
+                item,
+                "jhu_housing",
+                item.get("listing_address") or "Johns Hopkins off-campus housing",
+            )
+        )
+        last = results[-1]
+        if distance is not None:
+            last.distance_miles = round(float(distance), 2)
+        if commute_min is not None:
+            last.commute_minutes = commute_min
+    return results, error
+
+
 def _merge_results_round_robin(
     by_source: dict[str, list[SearchResult]],
     source_order: list[str],
@@ -584,6 +617,7 @@ def search_all_sources(profile: StudentProfile) -> dict:
     campus_coords = geocode(parsed.geocode_query)
 
     sources: list[tuple[str, Callable[..., tuple[list[SearchResult], Optional[str]]]]] = [
+        ("jhu_housing", search_jhu_housing),
         ("apartments.com", search_apartments_com),
         ("rent.com", search_rent_com),
         ("zillow.com", search_zillow),
@@ -603,6 +637,8 @@ def search_all_sources(profile: StudentProfile) -> dict:
                 max_commute_minutes=max_commute_minutes,
                 commute_mode=commute_mode,
             )
+        elif name == "jhu_housing":
+            results, error = searcher(parsed, max_rent, commute_mode)
         else:
             results, error = searcher(parsed, max_rent)
         sources_searched.append(name)
@@ -611,18 +647,21 @@ def search_all_sources(profile: StudentProfile) -> dict:
         elif error and not results:
             errors[name] = error
 
-        filtered = _apply_commute_filter(
-            results,
-            campus_coords,
-            parsed,
-            commute_mode,
-            max_commute_minutes,
-        )
-        if campus_coords and results and not filtered:
-            errors[name] = (
-                f"No listings within {max_commute_minutes} min "
-                f"{commute_mode} of campus"
+        if name == "jhu_housing":
+            filtered = results
+        else:
+            filtered = _apply_commute_filter(
+                results,
+                campus_coords,
+                parsed,
+                commute_mode,
+                max_commute_minutes,
             )
+            if campus_coords and results and not filtered:
+                errors[name] = (
+                    f"No listings within {max_commute_minutes} min "
+                    f"{commute_mode} of campus"
+                )
 
         capped = filtered[:MAX_RESULTS_PER_SOURCE]
         if max_rent:
@@ -636,6 +675,10 @@ def search_all_sources(profile: StudentProfile) -> dict:
         by_source[name] = capped
 
     unique = _merge_results_round_robin(by_source, [name for name, _ in sources])
+
+    from app.services.listing_dedupe import dedupe_cross_site_results
+
+    unique = dedupe_cross_site_results(unique)
 
     ai_ranked = False
     if unique:
@@ -672,9 +715,11 @@ def search_result_to_raw_text(result: SearchResult) -> str:
     ]
     if result.listing_address:
         lines.append(f"Address: {result.listing_address}")
+    if result.source_site == "jhu_housing" and result.distance_miles is not None:
+        lines.append(f"Distance from Homewood campus: {result.distance_miles} mi")
     if result.commute_minutes is not None:
         lines.append(f"Estimated commute: {result.commute_minutes} min")
-    if result.distance_miles is not None:
+    if result.distance_miles is not None and result.source_site != "jhu_housing":
         lines.append(f"Distance from campus: {result.distance_miles} mi")
     if result.rent:
         lines.append(f"Rent: ${int(result.rent)}/mo")

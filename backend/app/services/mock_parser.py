@@ -5,6 +5,10 @@ from typing import Optional
 from app.models import StudentProfile
 from app.schemas import ListingAnalysis, ScoreBreakdown
 from app.services.listing_address import extract_listing_address
+from app.services.jhu_housing import (
+    compute_homewood_commute_minutes,
+    extract_jhu_homewood_distance_from_text,
+)
 
 AMENITY_KEYWORDS = {
     "laundry": ["laundry", "washer", "dryer", "w/d"],
@@ -15,6 +19,7 @@ AMENITY_KEYWORDS = {
 }
 
 RENT_PATTERNS = [
+    re.compile(r"total monthly price\s*\$?\s*([\d,]+(?:\.\d{2})?)", re.I),
     re.compile(r"\$\s*([\d,]+(?:\.\d{2})?)\s*/?\s*mo", re.I),
     re.compile(r"\$\s*([\d,]+(?:\.\d{2})?)\s*(?:per\s+)?month", re.I),
     re.compile(r"([\d,]+(?:\.\d{2})?)\s*/\s*mo", re.I),
@@ -130,15 +135,36 @@ def parse_listing_mock(
         missing_info.append("Monthly rent not clearly stated")
     if beds is None:
         missing_info.append("Bedroom count unclear")
-    if "lease" not in text.lower():
+
+    lease_length = None
+    lease_match = re.search(r"(\d+\s*(?:month|year|week)s?\s+lease)", text, re.I)
+    if lease_match:
+        lease_length = lease_match.group(1)
+    elif "lease length:" in text.lower():
+        for line in text.splitlines():
+            if line.lower().startswith("lease length:"):
+                lease_length = line.split(":", 1)[1].strip()
+                break
+    elif "12" in text and "month" in text.lower():
+        lease_length = "12 months"
+    if not lease_length:
         missing_info.append("Lease length not specified")
     if "laundry" not in text.lower():
         missing_info.append("Laundry situation not described")
 
-    estimated_commute = min(
-        prefs["max_commute"] + 5,
-        max(8, prefs["max_commute"] - 10),
-    )
+    jhu_distance = extract_jhu_homewood_distance_from_text(text)
+    jhu_commute = None
+    if jhu_distance is not None:
+        jhu_commute = compute_homewood_commute_minutes(
+            jhu_distance, prefs["commute_mode"]
+        )
+    if jhu_commute is not None:
+        estimated_commute = jhu_commute
+    else:
+        estimated_commute = min(
+            prefs["max_commute"] + 5,
+            max(8, prefs["max_commute"] - 10),
+        )
 
     affordability = 70
     max_rent = prefs["max_rent"]
@@ -201,7 +227,17 @@ def parse_listing_mock(
         pros.append(f"Within your ${int(max_rent)}/mo budget")
     elif rent:
         cons.append(f"Above your ${int(max_rent)}/mo budget by ${int(rent - max_rent)}")
-    if estimated_commute <= max_commute:
+    if jhu_commute is not None:
+        mode = prefs["commute_mode"]
+        if jhu_commute <= max_commute:
+            pros.append(
+                f"{jhu_commute} min {mode} to Homewood fits your {max_commute} min limit"
+            )
+        else:
+            cons.append(
+                f"{jhu_commute} min {mode} to Homewood exceeds your {max_commute} min limit"
+            )
+    elif estimated_commute <= max_commute:
         pros.append(
             f"Estimated {estimated_commute} min commute fits your {max_commute} min limit"
         )
@@ -239,7 +275,7 @@ def parse_listing_mock(
         bathrooms=baths,
         amenities=amenities,
         hidden_fees=hidden_fees,
-        lease_length="12 months" if "12" in text else None,
+        lease_length=lease_length,
         red_flags=red_flags,
         missing_info=missing_info,
         estimated_commute_minutes=estimated_commute,

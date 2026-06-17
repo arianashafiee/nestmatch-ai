@@ -11,6 +11,7 @@ const pageTitles: Record<string, string> = {
   '/': 'Dashboard',
   '/profile': 'Student Profile',
   '/board': 'Hunting Board',
+  '/calendar': 'Tour Calendar',
   '/analytics': 'Analytics',
 }
 
@@ -29,7 +30,11 @@ export function TopNavbar({ onMenuToggle, isMobileMenuOpen }: TopNavbarProps) {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
   const { profile, isProfileComplete } = useStudentProfile()
-  const { openAddModal } = useApartments()
+  const {
+    openAddModal,
+    isListingSearchInProgress,
+    hasUnreadListingSearch,
+  } = useApartments()
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
   const profileMenuRef = useRef<HTMLDivElement>(null)
   const title = getPageTitle(location.pathname)
@@ -87,10 +92,21 @@ export function TopNavbar({ onMenuToggle, isMobileMenuOpen }: TopNavbarProps) {
         <Button
           size="sm"
           onClick={openAddModal}
-          className="hidden sm:inline-flex"
+          className="relative hidden sm:inline-flex"
         >
           <Plus className="h-4 w-4" />
           Find Apartments
+          {(isListingSearchInProgress || hasUnreadListingSearch) && (
+            <span
+              className={cn(
+                'absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-white',
+                isListingSearchInProgress
+                  ? 'animate-pulse bg-indigo-400'
+                  : 'bg-emerald-500',
+              )}
+              aria-hidden
+            />
+          )}
         </Button>
 
         <div className="hidden items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 lg:flex">

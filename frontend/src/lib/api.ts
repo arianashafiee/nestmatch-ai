@@ -182,11 +182,21 @@ export async function updateApartmentListing(
   updates: {
     status?: Apartment['status']
     isFavorite?: boolean
+    tourAt?: string | null
+    tourNotes?: Apartment['tourNotes']
   },
 ): Promise<Apartment> {
   const body: Record<string, unknown> = {}
   if (updates.status !== undefined) body.status = updates.status
   if (updates.isFavorite !== undefined) body.is_favorite = updates.isFavorite
+  if (updates.tourAt !== undefined) body.tour_at = updates.tourAt
+  if (updates.tourNotes !== undefined) {
+    body.tour_notes = updates.tourNotes.map((note) => ({
+      id: note.id,
+      text: note.text,
+      created_at: note.createdAt,
+    }))
+  }
 
   const data = await request<Record<string, unknown>>(
     `/apartments/${id}/status`,
@@ -203,6 +213,21 @@ export async function updateApartmentStatus(
   status: Apartment['status'],
 ): Promise<Apartment> {
   return updateApartmentListing(id, { status })
+}
+
+export async function deleteApartment(id: number): Promise<void> {
+  const token = getAuthToken()
+  const response = await fetch(`${API_BASE}/apartments/${id}`, {
+    method: 'DELETE',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(parseErrorDetail(error, response.status))
+  }
 }
 
 export interface AppConfig {

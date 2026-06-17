@@ -1,14 +1,21 @@
-import { Plus } from 'lucide-react'
 import { ApartmentCard } from '@/components/apartments/ApartmentCard'
+import { DeleteListingButton } from '@/components/apartments/DeleteListingButton'
+import { FavoritesSection } from '@/components/apartments/FavoritesSection'
 import { KanbanBoard } from '@/components/apartments/KanbanBoard'
 import { ParsingOverlay } from '@/components/apartments/ParsingOverlay'
-import { Button } from '@/components/ui/Button'
 import { ApartmentCardSkeleton } from '@/components/ui/Skeleton'
 import { useApartments } from '@/context/ApartmentsContext'
 
 export function HuntingBoardPage() {
-  const { apartments, isLoading, parsingIds, openAddModal, updateStatus, toggleFavorite } =
-    useApartments()
+  const {
+    apartments,
+    isLoading,
+    parsingIds,
+    updateStatus,
+    updateApartmentListing,
+    toggleFavorite,
+    deleteApartment,
+  } = useApartments()
 
   const pending = apartments.filter(
     (a) => a.status === 'pending' || parsingIds.includes(a.id),
@@ -17,20 +24,14 @@ export function HuntingBoardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-900">
-            Shortlist Board
-          </h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Drag cards between columns, use checkboxes on a listing for progress,
-            or star favorites in Interested.
-          </p>
-        </div>
-        <Button onClick={openAddModal}>
-          <Plus className="h-4 w-4" />
-          Find Apartments
-        </Button>
+      <div>
+        <h2 className="text-lg font-semibold text-slate-900">
+          Shortlist Board
+        </h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Drag cards between columns, star favorites, or delete any listing
+          from your shortlist.
+        </p>
       </div>
 
       {parsingIds.length > 0 && <ParsingOverlay count={parsingIds.length} />}
@@ -42,7 +43,15 @@ export function HuntingBoardPage() {
           </h3>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             {pending.map((apt) => (
-              <ApartmentCard key={apt.id} apartment={apt} compact pending />
+              <div key={apt.id} className="relative">
+                <ApartmentCard apartment={apt} compact pending />
+                <DeleteListingButton
+                  apartment={apt}
+                  onDelete={deleteApartment}
+                  className="absolute right-2 top-2 bg-white/90 shadow-sm"
+                  size="sm"
+                />
+              </div>
             ))}
           </div>
         </section>
@@ -61,10 +70,26 @@ export function HuntingBoardPage() {
               )
               .slice(0, 3)
               .map((apt) => (
-                <ApartmentCard key={apt.id} apartment={apt} />
+                <div key={apt.id} className="relative">
+                  <ApartmentCard apartment={apt} />
+                  <DeleteListingButton
+                    apartment={apt}
+                    onDelete={deleteApartment}
+                    className="absolute right-2 top-2 bg-white/90 shadow-sm"
+                    size="sm"
+                  />
+                </div>
               ))}
           </div>
         </section>
+      )}
+
+      {!isLoading && (
+        <FavoritesSection
+          apartments={apartments}
+          onToggleFavorite={toggleFavorite}
+          onDelete={deleteApartment}
+        />
       )}
 
       {isLoading ? (
@@ -77,7 +102,14 @@ export function HuntingBoardPage() {
         <KanbanBoard
           apartments={apartments}
           onMove={updateStatus}
+          onScheduleTour={async (id, tourAt) => {
+            await updateApartmentListing(id, {
+              status: 'tour_scheduled',
+              tourAt,
+            })
+          }}
           onToggleFavorite={toggleFavorite}
+          onDelete={deleteApartment}
         />
       )}
     </div>

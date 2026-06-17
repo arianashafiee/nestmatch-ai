@@ -13,8 +13,8 @@ export function ProfilePage() {
           Your Apartment Hunt Profile
         </h2>
         <p className="mt-1 text-sm text-slate-500">
-          Tell NestMatch about your budget, commute, and preferences so AI can
-          score listings for you.
+          Tell NestMatch about your budget, commute, contact info, and preferences
+          so AI can score listings for you.
         </p>
         {isProfileComplete && (
           <p className="mt-2 text-sm text-indigo-600">

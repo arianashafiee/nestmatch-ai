@@ -16,12 +16,13 @@ import { cn } from '@/lib/utils'
 import {
   AMENITY_OPTIONS,
   COMMUTE_OPTIONS,
+  LEASE_LENGTH_OPTIONS,
   type AmenityTag,
   type CommuteMode,
   type StudentProfile,
 } from '@/types/studentProfile'
 
-const STEPS = ['Campus & Budget', 'Commute & Living', 'Preferences']
+const STEPS = ['Campus & Budget', 'Commute & Living', 'Contact & Lease', 'Preferences']
 
 const commuteIcons: Record<CommuteMode, typeof Footprints> = {
   walking: Footprints,
@@ -91,6 +92,13 @@ export function StudentProfileForm({ onSaved }: StudentProfileFormProps) {
       }
     }
 
+    if (currentStep === 2) {
+      if (!draft.fullName.trim()) nextErrors.fullName = 'Required'
+      if (!draft.phoneNumber.trim()) nextErrors.phoneNumber = 'Required'
+      if (!draft.preferredLeaseLength.trim())
+        nextErrors.preferredLeaseLength = 'Select your preferred lease length'
+    }
+
     setErrors(nextErrors)
     return Object.keys(nextErrors).length === 0
   }
@@ -103,7 +111,12 @@ export function StudentProfileForm({ onSaved }: StudentProfileFormProps) {
   const handleBack = () => setStep((s) => Math.max(s - 1, 0))
 
   const handleSave = async () => {
-    if (!validateStep(step)) return
+    for (let i = 0; i < STEPS.length; i++) {
+      if (!validateStep(i)) {
+        setStep(i)
+        return
+      }
+    }
     updateProfile(draft)
     setLocalSaveWarning(null)
     try {
@@ -285,6 +298,62 @@ export function StudentProfileForm({ onSaved }: StudentProfileFormProps) {
         )}
 
         {step === 2 && (
+          <div className="space-y-5">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">
+                Contact & lease preferences
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Used in your landlord outreach emails and to match listings to your
+                preferred lease term.
+              </p>
+            </div>
+            <Input
+              id="fullName"
+              label="Your name"
+              placeholder="e.g. Alex Johnson"
+              value={draft.fullName}
+              onChange={(e) => updateDraft({ fullName: e.target.value })}
+              error={errors.fullName}
+            />
+            <Input
+              id="phoneNumber"
+              label="Phone number"
+              type="tel"
+              placeholder="e.g. (410) 555-0123"
+              value={draft.phoneNumber}
+              onChange={(e) => updateDraft({ phoneNumber: e.target.value })}
+              error={errors.phoneNumber}
+            />
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-slate-700">
+                Preferred lease length
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {LEASE_LENGTH_OPTIONS.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => updateDraft({ preferredLeaseLength: value })}
+                    className={cn(
+                      'rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors',
+                      draft.preferredLeaseLength === value
+                        ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                        : 'border-slate-200 text-slate-600 hover:border-slate-300',
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {errors.preferredLeaseLength && (
+                <p className="text-sm text-red-600">{errors.preferredLeaseLength}</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {step === 3 && (
           <div className="space-y-6">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">

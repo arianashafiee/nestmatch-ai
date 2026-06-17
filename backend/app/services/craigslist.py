@@ -22,23 +22,30 @@ def _craigslist_gallery_url(image_id: str) -> str:
     return f"https://images.craigslist.org/{image_id}_600x450.jpg"
 
 
-def fetch_craigslist_cover_photo(
-    url: str, timeout: float = 12.0
-) -> list[str]:
-    """Fetch a single cover photo from a Craigslist listing detail page."""
-    try:
-        with httpx.Client(
-            headers=BROWSER_HEADERS,
-            timeout=timeout,
-            follow_redirects=True,
-        ) as client:
-            response = client.get(url)
-            response.raise_for_status()
-            html = response.text
-    except Exception:
-        return []
+def _clean_craigslist_address_text(value: str) -> str:
+    cleaned = value.replace("\ue913", "").strip()
+    if not cleaned or "google map" in cleaned.lower():
+        return ""
+    return cleaned
 
-    soup = BeautifulSoup(html[:100_000], "lxml")
+
+def extract_craigslist_address(soup: BeautifulSoup) -> str:
+    """Prefer the full street line under the posting title over the map pin label."""
+    street = soup.select_one(".street-address, h2.street-address")
+    if street:
+        address = _clean_craigslist_address_text(street.get_text(" ", strip=True))
+        if address:
+            return address
+
+    for map_addr in soup.select(".mapaddress"):
+        address = _clean_craigslist_address_text(map_addr.get_text(" ", strip=True))
+        if address:
+            return address
+
+    return ""
+
+
+def _photos_from_craigslist_html(html: str, soup: BeautifulSoup) -> list[str]:
     og_image = soup.find("meta", property="og:image")
     if og_image and og_image.get("content"):
         return normalize_photo_list([str(og_image["content"])], "craigslist", limit=1)
@@ -50,6 +57,34 @@ def fetch_craigslist_cover_photo(
             limit=1,
         )
     return []
+
+
+def fetch_craigslist_listing_preview(
+    url: str, timeout: float = 12.0
+) -> tuple[list[str], str]:
+    """Fetch cover photo and street address from a Craigslist listing detail page."""
+    try:
+        with httpx.Client(
+            headers=BROWSER_HEADERS,
+            timeout=timeout,
+            follow_redirects=True,
+        ) as client:
+            response = client.get(url)
+            response.raise_for_status()
+            html = response.text
+    except Exception:
+        return [], ""
+
+    soup = BeautifulSoup(html[:100_000], "lxml")
+    return _photos_from_craigslist_html(html, soup), extract_craigslist_address(soup)
+
+
+def fetch_craigslist_cover_photo(
+    url: str, timeout: float = 12.0
+) -> list[str]:
+    """Fetch a single cover photo from a Craigslist listing detail page."""
+    photos, _ = fetch_craigslist_listing_preview(url, timeout=timeout)
+    return photos
 
 
 def enrich_craigslist_results_with_cover_photos(
@@ -68,17 +103,19 @@ def enrich_craigslist_results_with_cover_photos(
 
     with ThreadPoolExecutor(max_workers=COVER_PHOTO_WORKERS) as pool:
         future_map = {
-            pool.submit(fetch_craigslist_cover_photo, result.url): result
+            pool.submit(fetch_craigslist_listing_preview, result.url): result
             for result in to_fetch
         }
         for future in as_completed(future_map):
             result = future_map[future]
             try:
-                photos = future.result()
+                photos, address = future.result()
             except Exception:
-                photos = []
+                photos, address = [], ""
             if photos:
                 result.photos = photos
+            if address:
+                result.listing_address = address
 
 
 def parse_craigslist_listing(html: str, url: str) -> dict:
@@ -111,9 +148,7 @@ def parse_craigslist_listing(html: str, url: str) -> dict:
     if body:
         out["description"] = body.get_text("\n", strip=True)[:4000]
 
-    map_addr = soup.select_one(".mapaddress")
-    if map_addr:
-        out["address"] = map_addr.get_text(strip=True)
+    out["address"] = extract_craigslist_address(soup)
 
     image_ids: list[str] = []
     seen_ids: set[str] = set()

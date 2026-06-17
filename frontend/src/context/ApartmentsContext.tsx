@@ -10,14 +10,23 @@ import {
 } from 'react'
 import {
   createApartmentDraft,
+  deleteApartment as deleteApartmentApi,
   fetchApartments,
   parseListing,
-  updateApartmentListing,
-  updateApartmentStatus,
+  searchListings,
+  updateApartmentListing as updateApartmentListingApi,
 } from '@/lib/api'
 import { apartmentsStorageKey, useAuth } from '@/context/AuthContext'
+import { useStudentProfile } from '@/context/StudentProfileContext'
 import { useToast } from '@/context/ToastContext'
-import type { Apartment, ApartmentStatus } from '@/types/apartment'
+import {
+  loadListingSearchCache,
+  persistListingSearchCache,
+  searchProfileFingerprint,
+  type ListingSearchState,
+} from '@/lib/listingSearchCache'
+import { sortSearchResultsByScore } from '@/lib/listingActions'
+import type { Apartment, ApartmentStatus, SearchListingResult } from '@/types/apartment'
 import { normalizeApartment } from '@/types/apartment'
 
 interface ApartmentsContextValue {
@@ -36,12 +45,28 @@ interface ApartmentsContextValue {
   ) => Promise<Apartment>
   parseApartment: (id: number, rawText?: string) => Promise<Apartment | null>
   updateStatus: (id: number, status: ApartmentStatus) => Promise<void>
+  updateApartmentListing: (
+    id: number,
+    updates: {
+      status?: ApartmentStatus
+      isFavorite?: boolean
+      tourAt?: string | null
+      tourNotes?: Apartment['tourNotes']
+    },
+  ) => Promise<Apartment | null>
   toggleFavorite: (id: number, isFavorite: boolean) => Promise<void>
+  deleteApartment: (id: number) => Promise<void>
   syncApartment: (apartment: Apartment) => void
   refreshApartments: () => Promise<void>
   isAddModalOpen: boolean
   openAddModal: () => void
   closeAddModal: () => void
+  listingSearch: ListingSearchState | null
+  isListingSearchInProgress: boolean
+  isProfileStaleForSearch: boolean
+  hasUnreadListingSearch: boolean
+  searchListingsNearCampus: (options?: { force?: boolean }) => Promise<void>
+  updateListingSearchResults: (results: SearchListingResult[]) => void
 }
 
 const ApartmentsContext = createContext<ApartmentsContextValue | null>(null)
@@ -76,6 +101,7 @@ function upsertApartment(list: Apartment[], updated: Apartment): Apartment[] {
 
 export function ApartmentsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
+  const { profile, isProfileComplete } = useStudentProfile()
   const { showToast } = useToast()
   const [apartments, setApartments] = useState<Apartment[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -83,7 +109,118 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
   const [parsingIds, setParsingIds] = useState<number[]>([])
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  const [listingSearch, setListingSearch] = useState<ListingSearchState | null>(
+    null,
+  )
+  const [isListingSearchInProgress, setIsListingSearchInProgress] =
+    useState(false)
+  const [hasUnreadListingSearch, setHasUnreadListingSearch] = useState(false)
   const parseQueue = useRef<Set<number>>(new Set())
+  const isAddModalOpenRef = useRef(false)
+  const listingSearchRequestId = useRef(0)
+
+  const isProfileStaleForSearch = useMemo(() => {
+    if (!listingSearch) return false
+    return searchProfileFingerprint(profile) !== listingSearch.profileFingerprint
+  }, [listingSearch, profile])
+
+  const updateListingSearchResults = useCallback(
+    (results: SearchListingResult[]) => {
+      setListingSearch((prev) => {
+        if (!prev) return prev
+        const next = { ...prev, results }
+        if (user) persistListingSearchCache(user.id, next)
+        return next
+      })
+    },
+    [user],
+  )
+
+  const searchListingsNearCampus = useCallback(
+    async (options?: { force?: boolean }) => {
+      if (!user || !isProfileComplete) return
+      if (isListingSearchInProgress && !options?.force) return
+
+      const requestId = listingSearchRequestId.current + 1
+      listingSearchRequestId.current = requestId
+      setIsListingSearchInProgress(true)
+
+      try {
+        const data = await searchListings()
+        if (listingSearchRequestId.current !== requestId) return
+
+        const fingerprint = searchProfileFingerprint(profile)
+        const sortedResults = sortSearchResultsByScore(data.results, apartments)
+        const nextState: ListingSearchState = {
+          results: sortedResults,
+          sourcesSearched: data.sourcesSearched,
+          searchErrors: data.errors,
+          searchArea: data.searchArea,
+          searchMeta: {
+            campusGeocoded: data.campusGeocoded,
+            maxCommuteMinutes: data.maxCommuteMinutes,
+            commuteMode: data.commuteMode,
+            aiRanked: data.aiRanked,
+          },
+          profileFingerprint: fingerprint,
+          searchedAt: Date.now(),
+        }
+
+        setListingSearch(nextState)
+        persistListingSearchCache(user.id, nextState)
+
+        if (!isAddModalOpenRef.current) {
+          setHasUnreadListingSearch(true)
+        }
+
+        if (data.results.length === 0) {
+          const commuteBlocked = Object.values(data.errors).some((msg) =>
+            msg.includes('No listings within'),
+          )
+          showToast(
+            commuteBlocked
+              ? 'No listings within your commute radius — try transit mode or increase max commute in Profile.'
+              : data.errors.location
+                ? data.errors.location
+                : 'No listings found — sites may block automated search. Try pasting a direct link.',
+            'info',
+          )
+        } else if (!isAddModalOpenRef.current) {
+          showToast(
+            data.aiRanked
+              ? `Found ${data.results.length} listings — open Find Apartments to view`
+              : `Found ${data.results.length} listings — open Find Apartments to view`,
+            'success',
+          )
+        } else {
+          showToast(
+            data.aiRanked
+              ? `Found ${data.results.length} listings — ranked by AI for your profile`
+              : `Found ${data.results.length} listings across ${data.sourcesSearched.length} sites`,
+            'success',
+          )
+        }
+      } catch (err) {
+        if (listingSearchRequestId.current !== requestId) return
+        showToast(
+          err instanceof Error ? err.message : 'Search failed',
+          'error',
+        )
+      } finally {
+        if (listingSearchRequestId.current === requestId) {
+          setIsListingSearchInProgress(false)
+        }
+      }
+    },
+    [
+      apartments,
+      isListingSearchInProgress,
+      isProfileComplete,
+      profile,
+      showToast,
+      user,
+    ],
+  )
 
   const refreshApartments = useCallback(async () => {
     if (!user) return
@@ -174,6 +311,8 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
           photos: options?.photos ?? [],
           sourceSite: options?.sourceSite ?? null,
           landlordContact: null,
+          tourAt: null,
+          tourNotes: [],
           isFavorite: false,
           parsedAt: null,
           createdAt: new Date().toISOString(),
@@ -225,7 +364,7 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
       })
 
       try {
-        const updated = await updateApartmentListing(id, { isFavorite })
+        const updated = await updateApartmentListingApi(id, { isFavorite })
         setApartments((prev) => {
           const next = upsertApartment(prev, updated)
           persistLocal(user.id, next)
@@ -246,30 +385,21 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
     [apartments, showToast, user],
   )
 
-  const updateStatus = useCallback(
-    async (id: number, status: ApartmentStatus) => {
+  const deleteApartment = useCallback(
+    async (id: number) => {
       if (!user) return
       const previous = apartments.find((a) => a.id === id)
       if (!previous) return
 
       setApartments((prev) => {
-        const next = prev.map((a) => (a.id === id ? { ...a, status } : a))
+        const next = prev.filter((a) => a.id !== id)
         persistLocal(user.id, next)
         return next
       })
 
       try {
-        const updated = await updateApartmentStatus(id, status)
-        setApartments((prev) => {
-          const next = upsertApartment(prev, updated)
-          persistLocal(user.id, next)
-          return next
-        })
-        const label =
-          status === 'archived'
-            ? 'Archived'
-            : status.replace('_', ' ')
-        showToast(`Moved to ${label}`, 'success')
+        await deleteApartmentApi(id)
+        showToast('Listing removed from shortlist', 'success')
       } catch (err) {
         setApartments((prev) => {
           const next = upsertApartment(prev, previous)
@@ -277,7 +407,7 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
           return next
         })
         showToast(
-          err instanceof Error ? err.message : 'Failed to update status',
+          err instanceof Error ? err.message : 'Failed to delete listing',
           'error',
         )
       }
@@ -285,11 +415,106 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
     [apartments, showToast, user],
   )
 
+  const updateApartmentListingLocal = useCallback(
+    async (
+      id: number,
+      updates: {
+        status?: ApartmentStatus
+        isFavorite?: boolean
+        tourAt?: string | null
+        tourNotes?: Apartment['tourNotes']
+      },
+    ): Promise<Apartment | null> => {
+      if (!user) return null
+      const previous = apartments.find((a) => a.id === id)
+      if (!previous) return null
+
+      const optimistic: Apartment = {
+        ...previous,
+        ...(updates.status !== undefined ? { status: updates.status } : {}),
+        ...(updates.isFavorite !== undefined
+          ? { isFavorite: updates.isFavorite }
+          : {}),
+        ...(updates.tourAt !== undefined ? { tourAt: updates.tourAt } : {}),
+        ...(updates.tourNotes !== undefined
+          ? { tourNotes: updates.tourNotes }
+          : {}),
+      }
+
+      setApartments((prev) => {
+        const next = upsertApartment(prev, optimistic)
+        persistLocal(user.id, next)
+        return next
+      })
+
+      try {
+        const updated = await updateApartmentListingApi(id, updates)
+        setApartments((prev) => {
+          const next = upsertApartment(prev, updated)
+          persistLocal(user.id, next)
+          return next
+        })
+        if (updates.status === 'tour_scheduled' && updates.tourAt) {
+          showToast('Tour scheduled', 'success')
+        }
+        return updated
+      } catch (err) {
+        setApartments((prev) => {
+          const next = upsertApartment(prev, previous)
+          persistLocal(user.id, next)
+          return next
+        })
+        showToast(
+          err instanceof Error ? err.message : 'Failed to update listing',
+          'error',
+        )
+        return null
+      }
+    },
+    [apartments, showToast, user],
+  )
+
+  const updateStatus = useCallback(
+    async (id: number, status: ApartmentStatus) => {
+      const previous = apartments.find((a) => a.id === id)
+      if (status === 'tour_scheduled' && previous && !previous.tourAt) {
+        showToast(
+          'Set a tour date and time before moving to Tour Scheduled.',
+          'error',
+        )
+        return
+      }
+      const updated = await updateApartmentListingLocal(id, { status })
+      if (updated) {
+        const label =
+          status === 'archived' ? 'Archived' : status.replace('_', ' ')
+        showToast(`Moved to ${label}`, 'success')
+      }
+    },
+    [apartments, showToast, updateApartmentListingLocal],
+  )
+
+  useEffect(() => {
+    isAddModalOpenRef.current = isAddModalOpen
+    if (isAddModalOpen) {
+      setHasUnreadListingSearch(false)
+    }
+  }, [isAddModalOpen])
+
   useEffect(() => {
     if (!user) {
       setApartments([])
+      setListingSearch(null)
+      setHasUnreadListingSearch(false)
       setIsLoading(false)
       return
+    }
+
+    const cachedSearch = loadListingSearchCache(user.id)
+    if (cachedSearch) {
+      setListingSearch(cachedSearch)
+    } else {
+      setListingSearch(null)
     }
 
     const userId = user.id
@@ -331,7 +556,9 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
       addApartment,
       parseApartment,
       updateStatus,
+      updateApartmentListing: updateApartmentListingLocal,
       toggleFavorite,
+      deleteApartment,
       syncApartment,
       refreshApartments,
       isAddModalOpen,
@@ -340,6 +567,12 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
         setIsAddModalOpen(false)
         setSubmitError(null)
       },
+      listingSearch,
+      isListingSearchInProgress,
+      isProfileStaleForSearch,
+      hasUnreadListingSearch,
+      searchListingsNearCampus,
+      updateListingSearchResults,
     }),
     [
       apartments,
@@ -350,10 +583,18 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
       addApartment,
       parseApartment,
       updateStatus,
+      updateApartmentListingLocal,
       toggleFavorite,
+      deleteApartment,
       syncApartment,
       refreshApartments,
       isAddModalOpen,
+      listingSearch,
+      isListingSearchInProgress,
+      isProfileStaleForSearch,
+      hasUnreadListingSearch,
+      searchListingsNearCampus,
+      updateListingSearchResults,
     ],
   )
 

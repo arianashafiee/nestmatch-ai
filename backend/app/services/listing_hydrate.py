@@ -29,7 +29,7 @@ import re
 
 _URL_RE = re.compile(
     r"https?://(?:www\.)?(?:apartments\.com|rent\.com|zillow\.com|"
-    r"craigslist\.org|realtor\.com)[^\s<>\"']+",
+    r"craigslist\.org|realtor\.com|offcampushousing\.jhu\.edu)[^\s<>\"']+",
     re.I,
 )
 

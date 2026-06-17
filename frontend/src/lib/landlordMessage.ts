@@ -24,11 +24,18 @@ export function generateLandlordMessage(
 
   const greeting = contact?.name ? `Hi ${contact.name},` : 'Hi,'
 
+  const leaseLine = profile.preferredLeaseLength
+    ? `I'm looking for a ${profile.preferredLeaseLength} lease if available.\n\n`
+    : ''
+
+  const signatureName = profile.fullName.trim() || '[Your Name]'
+  const signaturePhone = profile.phoneNumber.trim() || '[Your Phone Number]'
+
   return `${greeting}
 
 I'm a student at ${university} and I'm interested in your listing${analysis.title ? ` ("${analysis.title}")` : ''} near ${location}. The ${rent} range looks like it could work for my budget.
 
-I'd love to learn a bit more before scheduling a tour. Could you help me with the following?
+${leaseLine}I'd love to learn a bit more before scheduling a tour. Could you help me with the following?
 
 ${questions}
 ${missing}
@@ -37,6 +44,6 @@ I'm hoping to move in for the upcoming semester and can tour on short notice. Pl
 Thank you for your time!
 
 Best,
-[Your Name]
-[Your Phone Number]`
+${signatureName}
+${signaturePhone}`
 }

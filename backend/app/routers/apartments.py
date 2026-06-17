@@ -58,12 +58,29 @@ def update_apartment_status(
 ) -> ApartmentListing:
     try:
         listing = _get_user_listing(db, apartment_id, current_user)
-        if payload.status is None and payload.is_favorite is None:
+        payload_data = payload.model_dump(exclude_unset=True)
+        if not payload_data:
             raise HTTPException(status_code=400, detail="No updates provided")
-        if payload.status is not None:
-            listing.status = payload.status
-        if payload.is_favorite is not None:
-            listing.is_favorite = payload.is_favorite
+        if payload_data.get("status") is not None:
+            next_status = payload_data["status"]
+            if next_status == "tour_scheduled":
+                tour_at = (
+                    payload_data["tour_at"]
+                    if "tour_at" in payload_data
+                    else listing.tour_at
+                )
+                if not tour_at:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Set a tour date and time before moving to Tour Scheduled.",
+                    )
+            listing.status = next_status
+        if payload_data.get("is_favorite") is not None:
+            listing.is_favorite = payload_data["is_favorite"]
+        if "tour_at" in payload_data:
+            listing.tour_at = payload_data["tour_at"]
+        if payload_data.get("tour_notes") is not None:
+            listing.tour_notes = payload_data["tour_notes"]
         db.commit()
         db.refresh(listing)
         return listing
@@ -102,6 +119,26 @@ def refresh_listing_photos(
     except SQLAlchemyError as exc:
         db.rollback()
         raise HTTPException(status_code=503, detail="Database error") from exc
+
+
+@router.delete("/{apartment_id}", status_code=204)
+def delete_apartment(
+    apartment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    try:
+        listing = _get_user_listing(db, apartment_id, current_user)
+        db.delete(listing)
+        db.commit()
+    except HTTPException:
+        raise
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail="Could not delete listing.",
+        ) from exc
 
 
 @router.get("/{apartment_id}", response_model=ApartmentResponse)

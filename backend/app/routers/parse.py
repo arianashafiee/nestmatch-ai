@@ -77,6 +77,13 @@ def parse_listing_endpoint(
                 fetch_photos=not (apartment.photos and len(apartment.photos) >= 2),
             )
             apartment.raw_text = listing_text
+            if apartment.source_site == "jhu_housing":
+                from app.services.jhu_housing import append_jhu_commute_to_listing_text
+
+                listing_text = append_jhu_commute_to_listing_text(
+                    listing_text, profile.commute_mode or "walking"
+                )
+                apartment.raw_text = listing_text
             if apartment.photos:
                 from app.services.image_quality import normalize_photo_list
 
@@ -90,6 +97,10 @@ def parse_listing_endpoint(
         analysis, parsed_with = parse_listing(
             listing_text, profile, photo_count=photo_count
         )
+        if apartment.source_site == "jhu_housing":
+            from app.services.jhu_housing import apply_jhu_commute_to_analysis
+
+            analysis = apply_jhu_commute_to_analysis(analysis, listing_text, profile)
         map_location = resolve_map_location(listing_text, profile, analysis.location)
         if map_location:
             analysis.location = map_location

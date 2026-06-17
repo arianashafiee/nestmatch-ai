@@ -14,6 +14,7 @@ COMMUTE_SPEED_MPH = {
     "walking": 3.0,
     "biking": 10.0,
     "transit": 18.0,
+    "driving": 25.0,
 }
 
 

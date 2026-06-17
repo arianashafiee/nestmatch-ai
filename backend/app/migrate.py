@@ -13,6 +13,11 @@ MIGRATIONS = [
     "ALTER TABLE apartment_listings ADD COLUMN landlord_contact JSON",
     "ALTER TABLE apartment_listings ADD COLUMN is_favorite BOOLEAN DEFAULT 0",
     "ALTER TABLE student_profiles ADD COLUMN user_id INTEGER",
+    "ALTER TABLE student_profiles ADD COLUMN full_name VARCHAR(255)",
+    "ALTER TABLE student_profiles ADD COLUMN phone_number VARCHAR(50)",
+    "ALTER TABLE student_profiles ADD COLUMN preferred_lease_length VARCHAR(100)",
+    "ALTER TABLE apartment_listings ADD COLUMN tour_at DATETIME",
+    "ALTER TABLE apartment_listings ADD COLUMN tour_notes JSON",
 ]
 
 

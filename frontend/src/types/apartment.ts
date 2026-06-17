@@ -40,6 +40,12 @@ export interface LandlordContact {
   contactUrl: string | null
 }
 
+export interface TourNote {
+  id: string
+  text: string
+  createdAt: string
+}
+
 export interface Apartment {
   id: number
   profileId: number
@@ -53,6 +59,8 @@ export interface Apartment {
   sourceSite: string | null
   isFavorite: boolean
   landlordContact: LandlordContact | null
+  tourAt: string | null
+  tourNotes: TourNote[]
   parsedAt: string | null
   createdAt: string
   listingAddress: string
@@ -118,6 +126,23 @@ function analysisFromApi(data: unknown): ListingAnalysis | null {
   }
 }
 
+function tourNotesFromApi(data: unknown): TourNote[] {
+  if (!Array.isArray(data)) return []
+  return data
+    .filter((item) => item && typeof item === 'object')
+    .map((item) => {
+      const note = item as Record<string, unknown>
+      return {
+        id: String(note.id ?? crypto.randomUUID()),
+        text: String(note.text ?? ''),
+        createdAt: String(
+          note.created_at ?? note.createdAt ?? new Date().toISOString(),
+        ),
+      }
+    })
+    .filter((note) => note.text.trim().length > 0)
+}
+
 function landlordContactFromApi(data: unknown): LandlordContact | null {
   if (!data || typeof data !== 'object') return null
   const c = data as Record<string, unknown>
@@ -130,9 +155,49 @@ function landlordContactFromApi(data: unknown): LandlordContact | null {
   }
 }
 
+const ADDRESS_LINE = /^Address:\s*(.+)$/gim
+const STATE_ZIP_ADDRESS =
+  /\b(\d{1,6}\s+(?:[NSEW]\.?\s+)?[A-Za-z0-9.'-]+(?:\s+[A-Za-z0-9.'-]+){0,5}(?:,\s*(?:#|Apt|Unit|Suite)?\.?\s*[\w-]+)?,\s*[A-Za-z .'-]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?)\b/gi
+
+function hasStateZip(value: string): boolean {
+  return /,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?\s*$/i.test(value.trim())
+}
+
+function looksLikeApproximateMapPin(value: string): boolean {
+  const lower = value.toLowerCase()
+  return lower.includes(' near ') && !hasStateZip(value)
+}
+
 export function extractListingAddress(rawText: string): string {
-  const match = rawText.match(/^Address:\s*(.+)$/im)
-  return match?.[1]?.trim() ?? ''
+  if (!rawText) return ''
+
+  const candidates: string[] = []
+
+  for (const match of rawText.matchAll(ADDRESS_LINE)) {
+    const address = match[1]?.trim()
+    if (address && !looksLikeCampusLabel(address)) {
+      candidates.push(address)
+    }
+  }
+
+  for (const match of rawText.matchAll(STATE_ZIP_ADDRESS)) {
+    const address = match[1]?.trim()
+    if (address && !looksLikeCampusLabel(address)) {
+      candidates.push(address)
+    }
+  }
+
+  if (candidates.length === 0) return ''
+
+  for (const candidate of candidates) {
+    if (hasStateZip(candidate)) return candidate
+  }
+
+  for (const candidate of candidates) {
+    if (!looksLikeApproximateMapPin(candidate)) return candidate
+  }
+
+  return candidates[0]
 }
 
 function looksLikeCampusLabel(value: string): boolean {
@@ -187,6 +252,8 @@ export function apartmentFromApi(data: Record<string, unknown>): Apartment {
     sourceSite: (data.source_site as string | null) ?? null,
     isFavorite: Boolean(data.is_favorite),
     landlordContact: landlordContactFromApi(data.landlord_contact),
+    tourAt: (data.tour_at as string | null) ?? null,
+    tourNotes: tourNotesFromApi(data.tour_notes),
     parsedAt: (data.parsed_at as string | null) ?? null,
     createdAt: data.created_at as string,
     listingAddress: (data.listing_address as string) ?? '',
@@ -208,6 +275,8 @@ export function normalizeApartment(apt: Partial<Apartment> & { id: number }): Ap
     sourceSite: apt.sourceSite ?? null,
     isFavorite: apt.isFavorite ?? false,
     landlordContact: apt.landlordContact ?? null,
+    tourAt: apt.tourAt ?? null,
+    tourNotes: Array.isArray(apt.tourNotes) ? apt.tourNotes : [],
     parsedAt: apt.parsedAt ?? null,
     createdAt: apt.createdAt ?? new Date().toISOString(),
     listingAddress:

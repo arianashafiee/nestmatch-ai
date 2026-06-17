@@ -1,15 +1,30 @@
-import { useState } from 'react'
-import { ExternalLink, Loader2, Search, Sparkles } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import {
+  CheckCircle2,
+  ExternalLink,
+  Loader2,
+  RefreshCw,
+  Search,
+  Sparkles,
+} from 'lucide-react'
+import { ScoreBadge } from '@/components/apartments/ScoreBadge'
 import { Button } from '@/components/ui/Button'
-import { searchListings } from '@/lib/api'
+import {
+  findApartmentByListingUrl,
+  isApartmentAnalyzed,
+  isListingEligibleForAnalysis,
+  sortSearchResultsByScore,
+} from '@/lib/listingActions'
 import { useApartments } from '@/context/ApartmentsContext'
 import { useStudentProfile } from '@/context/StudentProfileContext'
 import { useToast } from '@/context/ToastContext'
 import { cn } from '@/lib/utils'
-import type { SearchListingResult } from '@/types/apartment'
-import { photoProxyUrl } from '@/types/apartment'
+import type { Apartment, SearchListingResult } from '@/types/apartment'
+import { normalizeApartment, photoProxyUrl } from '@/types/apartment'
 
 const SOURCE_LABELS: Record<string, string> = {
+  jhu_housing: 'JHU Off-Campus Housing',
   'apartments.com': 'Apartments.com',
   'rent.com': 'Rent.com',
   'zillow.com': 'Zillow',
@@ -23,93 +38,173 @@ interface DiscoverListingsProps {
 
 export function DiscoverListings({ onAdded }: DiscoverListingsProps) {
   const { profile, isProfileComplete } = useStudentProfile()
-  const { addApartment, isSubmitting } = useApartments()
+  const {
+    apartments,
+    addApartment,
+    parseApartment,
+    isSubmitting,
+    parsingIds,
+    listingSearch,
+    isListingSearchInProgress,
+    isProfileStaleForSearch,
+    searchListingsNearCampus,
+    updateListingSearchResults,
+  } = useApartments()
   const { showToast } = useToast()
 
-  const [isSearching, setIsSearching] = useState(false)
-  const [results, setResults] = useState<SearchListingResult[]>([])
-  const [sourcesSearched, setSourcesSearched] = useState<string[]>([])
-  const [searchErrors, setSearchErrors] = useState<Record<string, string>>({})
-  const [searchArea, setSearchArea] = useState('')
-  const [searchMeta, setSearchMeta] = useState<{
-    campusGeocoded: boolean
-    maxCommuteMinutes: number
-    commuteMode: string
-    aiRanked: boolean
-  } | null>(null)
+  const [isAnalyzingAll, setIsAnalyzingAll] = useState(false)
+  const [analyzeAllProgress, setAnalyzeAllProgress] = useState({
+    current: 0,
+    total: 0,
+  })
   const [addingUrl, setAddingUrl] = useState<string | null>(null)
 
   const area = profile.campusLocation || profile.university
 
-  const handleSearch = async () => {
-    if (!isProfileComplete) return
-    setIsSearching(true)
-    setResults([])
-    try {
-      const data = await searchListings()
-      setResults(data.results)
-      setSourcesSearched(data.sourcesSearched)
-      setSearchErrors(data.errors)
-      setSearchArea(data.searchArea)
-      setSearchMeta({
-        campusGeocoded: data.campusGeocoded,
-        maxCommuteMinutes: data.maxCommuteMinutes,
-        commuteMode: data.commuteMode,
-        aiRanked: data.aiRanked,
-      })
-      if (data.results.length === 0) {
-        const commuteBlocked = Object.values(data.errors).some((msg) =>
-          msg.includes('No listings within'),
-        )
-        showToast(
-          commuteBlocked
-            ? 'No listings within your commute radius — try transit mode or increase max commute in Profile.'
-            : data.errors.location
-              ? data.errors.location
-              : 'No listings found — sites may block automated search. Try pasting a direct link.',
-          'info',
-        )
-      } else {
-        showToast(
-          data.aiRanked
-            ? `Found ${data.results.length} listings — ranked by AI for your profile`
-            : `Found ${data.results.length} listings across ${data.sourcesSearched.length} sites`,
-          'success',
-        )
-      }
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Search failed',
-        'error',
-      )
-    } finally {
-      setIsSearching(false)
-    }
-  }
+  const results = useMemo(
+    () =>
+      listingSearch
+        ? sortSearchResultsByScore(listingSearch.results, apartments)
+        : [],
+    [apartments, listingSearch],
+  )
 
-  const handleAdd = async (listing: SearchListingResult) => {
-    setAddingUrl(listing.url)
-    await addApartment(listing.rawText, {
+  const sourcesSearched = listingSearch?.sourcesSearched ?? []
+  const searchErrors = listingSearch?.searchErrors ?? {}
+  const searchArea = listingSearch?.searchArea ?? ''
+  const searchMeta = listingSearch?.searchMeta ?? null
+
+  const eligibleListings = useMemo(
+    () =>
+      results.filter((listing) =>
+        isListingEligibleForAnalysis(apartments, listing.url, parsingIds),
+      ),
+    [apartments, parsingIds, results],
+  )
+
+  const analyzeListing = async (
+    listing: SearchListingResult,
+    knownApartments: Apartment[],
+  ): Promise<Apartment | null> => {
+    const existing = findApartmentByListingUrl(knownApartments, listing.url)
+    if (existing && isApartmentAnalyzed(existing)) return existing
+
+    if (existing) {
+      return parseApartment(existing.id, listing.rawText)
+    }
+
+    return addApartment(listing.rawText, {
       sourceUrl: listing.url,
       photos: listing.photos,
       sourceSite: listing.sourceSite,
     })
+  }
+
+  const upsertLocalApartment = (
+    list: Apartment[],
+    updated: Apartment,
+  ): Apartment[] => {
+    const normalized = normalizeApartment(updated)
+    const idx = list.findIndex((a) => a.id === normalized.id)
+    if (idx === -1) return [normalized, ...list]
+    const next = [...list]
+    next[idx] = normalized
+    return next
+  }
+
+  const handleSearch = () => {
+    if (!isProfileComplete) return
+    void searchListingsNearCampus({ force: true })
+  }
+
+  const handleAdd = async (listing: SearchListingResult) => {
+    const existing = findApartmentByListingUrl(apartments, listing.url)
+    if (existing && isApartmentAnalyzed(existing)) return
+
+    setAddingUrl(listing.url)
+    const parsed = await analyzeListing(listing, apartments)
     setAddingUrl(null)
+    if (parsed) {
+      updateListingSearchResults(
+        sortSearchResultsByScore(
+          results,
+          upsertLocalApartment(apartments, parsed),
+        ),
+      )
+    }
     onAdded?.()
   }
+
+  const handleAnalyzeAll = async () => {
+    if (eligibleListings.length === 0) return
+
+    setIsAnalyzingAll(true)
+    setAnalyzeAllProgress({ current: 0, total: eligibleListings.length })
+
+    let localApartments = apartments
+    let analyzedCount = 0
+
+    try {
+      for (let index = 0; index < eligibleListings.length; index++) {
+        const listing = eligibleListings[index]
+        setAnalyzeAllProgress({
+          current: index + 1,
+          total: eligibleListings.length,
+        })
+        setAddingUrl(listing.url)
+
+        const parsed = await analyzeListing(listing, localApartments)
+        if (parsed) {
+          localApartments = upsertLocalApartment(localApartments, parsed)
+          if (isApartmentAnalyzed(parsed)) analyzedCount += 1
+        }
+      }
+
+      updateListingSearchResults(
+        sortSearchResultsByScore(results, localApartments),
+      )
+      showToast(
+        analyzedCount === 1
+          ? 'Analyzed 1 listing — results sorted by compatibility score'
+          : `Analyzed ${analyzedCount} listings — results sorted by compatibility score`,
+        'success',
+      )
+      onAdded?.()
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : 'Batch analysis failed',
+        'error',
+      )
+    } finally {
+      setAddingUrl(null)
+      setIsAnalyzingAll(false)
+      setAnalyzeAllProgress({ current: 0, total: 0 })
+    }
+  }
+
+  const hasCachedResults = results.length > 0
 
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
         <p className="font-medium">Automatic search across rental sites</p>
         <p className="mt-1 text-indigo-800">
-          NestMatch searches <strong>Apartments.com</strong>, <strong>Rent.com</strong>,{' '}
-          <strong>Zillow</strong>, <strong>Craigslist</strong>, and <strong>Realtor.com</strong>{' '}
-          near your campus address, filtered by your max{' '}
-          {profile.commuteMode} commute ({profile.maxCommuteMinutes} min) and budget (
-          ${profile.maxRent}/mo). With <strong>OpenAI</strong> configured, results are also
-          AI-ranked and summarized for your profile.
+          NestMatch searches <strong>JHU Off-Campus Housing</strong>,{' '}
+          <strong>Apartments.com</strong>, <strong>Rent.com</strong>,{' '}
+          <strong>Zillow</strong>, <strong>Craigslist</strong>, and{' '}
+          <strong>Realtor.com</strong> near your campus address. JHU portal
+          listings use each property&apos;s street address; other sites are
+          filtered by your max {profile.commuteMode} commute (
+          {profile.maxCommuteMinutes} min) and budget (${profile.maxRent}/mo).
+          With <strong>OpenAI</strong> configured, results are also AI-ranked
+          and summarized for your profile.
         </p>
+        {hasCachedResults && (
+          <p className="mt-2 text-xs text-indigo-700">
+            Results stay saved when you close this window. You can leave while a
+            search runs and come back to view listings.
+          </p>
+        )}
       </div>
 
       {!isProfileComplete ? (
@@ -117,11 +212,24 @@ export function DiscoverListings({ onAdded }: DiscoverListingsProps) {
           Complete your profile with campus location and budget to search.
         </p>
       ) : (
-        <Button onClick={handleSearch} disabled={isSearching || isSubmitting}>
-          {isSearching ? (
+        <Button
+          onClick={handleSearch}
+          disabled={isListingSearchInProgress || isSubmitting}
+        >
+          {isListingSearchInProgress ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
               Searching near {area}...
+            </>
+          ) : isProfileStaleForSearch && hasCachedResults ? (
+            <>
+              <RefreshCw className="h-4 w-4" />
+              Refresh for updated profile
+            </>
+          ) : hasCachedResults ? (
+            <>
+              <Search className="h-4 w-4" />
+              Search again
             </>
           ) : (
             <>
@@ -132,9 +240,27 @@ export function DiscoverListings({ onAdded }: DiscoverListingsProps) {
         </Button>
       )}
 
-      {searchMeta?.aiRanked && (
+      {isProfileStaleForSearch && hasCachedResults && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <p className="font-medium">Your profile changed since this search</p>
+          <p className="mt-1 text-xs text-amber-800">
+            Showing your last results below. Refresh the search to update
+            commute filtering, budget, and AI ranking for your new settings.
+          </p>
+        </div>
+      )}
+
+      {isListingSearchInProgress && hasCachedResults && (
         <p className="text-xs font-medium text-indigo-700">
-          Results ranked by OpenAI based on your budget, commute, and preferences.
+          Search in progress — previous results stay visible until the new search
+          finishes.
+        </p>
+      )}
+
+      {searchMeta?.aiRanked && !isProfileStaleForSearch && (
+        <p className="text-xs font-medium text-indigo-700">
+          Results ranked by OpenAI based on your budget, commute, and
+          preferences.
         </p>
       )}
 
@@ -185,93 +311,179 @@ export function DiscoverListings({ onAdded }: DiscoverListingsProps) {
 
       {results.length > 0 && (
         <div className="space-y-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            {results.length} real listings found
-          </p>
-          {results.map((listing) => (
-            <div
-              key={listing.url}
-              className="overflow-hidden rounded-xl border border-slate-200 bg-white"
-            >
-              <div className="flex flex-col sm:flex-row">
-                {listing.photos[0] ? (
-                  <img
-                    src={photoProxyUrl(listing.photos[0])}
-                    alt=""
-                    className="h-36 w-full object-cover sm:h-auto sm:w-40 shrink-0"
-                    onError={(e) => {
-                      const img = e.currentTarget
-                      if (img.dataset.fallbackApplied === '1') return
-                      img.dataset.fallbackApplied = '1'
-                      if (!img.src.includes(encodeURIComponent(listing.photos[0]))) {
-                        img.src = listing.photos[0]
-                      }
-                    }}
-                  />
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              {results.length} real listings found
+            </p>
+            {eligibleListings.length > 0 ? (
+              <Button
+                size="sm"
+                onClick={handleAnalyzeAll}
+                disabled={
+                  isAnalyzingAll ||
+                  isListingSearchInProgress ||
+                  isSubmitting ||
+                  Boolean(addingUrl && !isAnalyzingAll)
+                }
+              >
+                {isAnalyzingAll ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Analyzing {analyzeAllProgress.current} of{' '}
+                    {analyzeAllProgress.total}...
+                  </>
                 ) : (
-                  <div className="flex h-28 w-full shrink-0 items-center justify-center bg-slate-100 sm:w-40">
-                    <span className="text-xs text-slate-400">Photo on add</span>
-                  </div>
+                  <>
+                    <Sparkles className="h-4 w-4" />
+                    Analyze all ({eligibleListings.length})
+                  </>
                 )}
-                <div className="flex flex-1 items-start justify-between gap-3 p-4">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-semibold text-slate-900">
-                        {listing.title}
-                      </h3>
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
-                        {SOURCE_LABELS[listing.sourceSite] ?? listing.sourceSite}
+              </Button>
+            ) : (
+              <p className="text-xs font-medium text-emerald-700">
+                All listings analyzed — sorted by compatibility score
+              </p>
+            )}
+          </div>
+          {results.map((listing) => {
+            const existing = findApartmentByListingUrl(apartments, listing.url)
+            const isAnalyzed = existing ? isApartmentAnalyzed(existing) : false
+            const isAnalyzing = Boolean(
+              existing &&
+                !isAnalyzed &&
+                (parsingIds.includes(existing.id) ||
+                  existing.status === 'pending'),
+            )
+            const score =
+              existing?.compatibilityScore ??
+              existing?.analysis?.compatibility_score
+
+            return (
+              <div
+                key={listing.url}
+                className={cn(
+                  'overflow-hidden rounded-xl border bg-white',
+                  isAnalyzed
+                    ? 'border-emerald-200 bg-emerald-50/30'
+                    : 'border-slate-200',
+                )}
+              >
+                <div className="flex flex-col sm:flex-row">
+                  {listing.photos[0] ? (
+                    <img
+                      src={photoProxyUrl(listing.photos[0])}
+                      alt=""
+                      className="h-36 w-full shrink-0 object-cover sm:h-auto sm:w-40"
+                      onError={(e) => {
+                        const img = e.currentTarget
+                        if (img.dataset.fallbackApplied === '1') return
+                        img.dataset.fallbackApplied = '1'
+                        if (
+                          !img.src.includes(
+                            encodeURIComponent(listing.photos[0]),
+                          )
+                        ) {
+                          img.src = listing.photos[0]
+                        }
+                      }}
+                    />
+                  ) : (
+                    <div className="flex h-28 w-full shrink-0 items-center justify-center bg-slate-100 sm:w-40">
+                      <span className="text-xs text-slate-400">
+                        Photo on add
                       </span>
                     </div>
-                    {listing.rent != null && (
-                      <p className="mt-1 text-sm font-medium text-indigo-600">
-                        ${listing.rent.toLocaleString()}/mo
+                  )}
+                  <div className="flex flex-1 items-start justify-between gap-3 p-4">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-semibold text-slate-900">
+                          {listing.title}
+                        </h3>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                          {SOURCE_LABELS[listing.sourceSite] ??
+                            listing.sourceSite}
+                        </span>
+                      </div>
+                      {listing.rent != null && (
+                        <p className="mt-1 text-sm font-medium text-indigo-600">
+                          ${listing.rent.toLocaleString()}/mo
+                        </p>
+                      )}
+                      {listing.commuteMinutes != null && (
+                        <p className="mt-1 text-xs font-medium text-emerald-700">
+                          ~{listing.commuteMinutes} min {profile.commuteMode}{' '}
+                          to campus
+                          {listing.distanceMiles != null
+                            ? ` (${listing.distanceMiles.toFixed(1)} mi)`
+                            : ''}
+                        </p>
+                      )}
+                      {listing.listingAddress && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          {listing.listingAddress}
+                        </p>
+                      )}
+                      <p className="mt-1 line-clamp-2 text-sm text-slate-600">
+                        {listing.snippet}
                       </p>
-                    )}
-                    {listing.commuteMinutes != null && (
-                      <p className="mt-1 text-xs font-medium text-emerald-700">
-                        ~{listing.commuteMinutes} min {profile.commuteMode} to campus
-                        {listing.distanceMiles != null
-                          ? ` (${listing.distanceMiles.toFixed(1)} mi)`
-                          : ''}
-                      </p>
-                    )}
-                    {listing.listingAddress && (
-                      <p className="mt-1 text-xs text-slate-500">{listing.listingAddress}</p>
-                    )}
-                    <p className="mt-1 line-clamp-2 text-sm text-slate-600">
-                      {listing.snippet}
-                    </p>
-                    <a
-                      href={listing.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-2 inline-flex items-center gap-1 text-xs text-indigo-600 hover:underline"
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                      View on {listing.sourceSite}
-                    </a>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleAdd(listing)}
-                    disabled={addingUrl === listing.url}
-                    className="shrink-0"
-                  >
-                    {addingUrl === listing.url ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <a
+                        href={listing.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 inline-flex items-center gap-1 text-xs text-indigo-600 hover:underline"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        View on {listing.sourceSite}
+                      </a>
+                    </div>
+                    {isAnalyzed && existing ? (
+                      <div className="flex shrink-0 flex-col items-end gap-2">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          Already analyzed
+                        </span>
+                        {score != null && (
+                          <ScoreBadge score={score} size="sm" />
+                        )}
+                        <Link
+                          to={`/board/${existing.id}`}
+                          className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
+                        >
+                          View on board
+                        </Link>
+                      </div>
                     ) : (
-                      <>
-                        <Sparkles className="h-3.5 w-3.5" />
-                        Analyze
-                      </>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleAdd(listing)}
+                        disabled={
+                          isAnalyzing ||
+                          isAnalyzingAll ||
+                          addingUrl === listing.url ||
+                          isSubmitting
+                        }
+                        className="shrink-0"
+                      >
+                        {isAnalyzing || addingUrl === listing.url ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Analyzing...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="h-3.5 w-3.5" />
+                            Analyze
+                          </>
+                        )}
+                      </Button>
                     )}
-                  </Button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

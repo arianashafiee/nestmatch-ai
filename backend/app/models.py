@@ -39,6 +39,9 @@ class StudentProfile(Base):
     roommate_count: Mapped[int] = mapped_column(Integer, default=0)
     must_haves: Mapped[list] = mapped_column(JSON, default=list)
     dealbreakers: Mapped[list] = mapped_column(JSON, default=list)
+    full_name: Mapped[str] = mapped_column(String(255), default="")
+    phone_number: Mapped[str] = mapped_column(String(50), default="")
+    preferred_lease_length: Mapped[str] = mapped_column(String(100), default="")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -67,6 +70,10 @@ class ApartmentListing(Base):
     source_site: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     is_favorite: Mapped[bool] = mapped_column(default=False)
     landlord_contact: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    tour_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    tour_notes: Mapped[list] = mapped_column(JSON, default=list)
     parsed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

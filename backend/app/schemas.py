@@ -29,6 +29,9 @@ class StudentProfileBase(BaseModel):
     roommate_count: int = Field(default=0, ge=0, le=10)
     must_haves: list[AmenityTagLiteral] = []
     dealbreakers: list[AmenityTagLiteral] = []
+    full_name: str = ""
+    phone_number: str = ""
+    preferred_lease_length: str = ""
 
 
 class StudentProfileUpdate(StudentProfileBase):
@@ -172,6 +175,7 @@ class AppConfigResponse(BaseModel):
     mapbox_style_url: str = "mapbox://styles/mapbox/streets-v12"
     database: str
     search_sources: list[str] = [
+        "jhu_housing",
         "apartments.com",
         "rent.com",
         "zillow.com",
@@ -193,6 +197,8 @@ class ApartmentResponse(BaseModel):
     source_site: Optional[str] = None
     is_favorite: bool = False
     landlord_contact: Optional[LandlordContact] = None
+    tour_at: Optional[datetime] = None
+    tour_notes: list[dict] = []
     parsed_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     listing_address: str = ""
@@ -225,6 +231,8 @@ class ApartmentResponse(BaseModel):
                 "source_site": data.source_site,
                 "is_favorite": bool(getattr(data, "is_favorite", False)),
                 "landlord_contact": data.landlord_contact,
+                "tour_at": getattr(data, "tour_at", None),
+                "tour_notes": getattr(data, "tour_notes", None) or [],
                 "parsed_at": data.parsed_at,
                 "created_at": data.created_at,
                 "listing_address": extract_listing_address(data.raw_text or ""),
@@ -241,3 +249,11 @@ class ApartmentResponse(BaseModel):
 class ApartmentStatusUpdate(BaseModel):
     status: Optional[ApartmentStatusLiteral] = None
     is_favorite: Optional[bool] = None
+    tour_at: Optional[datetime] = None
+    tour_notes: Optional[list[dict]] = None
+
+
+class TourNoteSchema(BaseModel):
+    id: str
+    text: str
+    created_at: datetime

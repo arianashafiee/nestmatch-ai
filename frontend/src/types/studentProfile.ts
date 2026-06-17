@@ -18,7 +18,18 @@ export interface StudentProfile {
   roommateCount: number
   mustHaves: AmenityTag[]
   dealbreakers: AmenityTag[]
+  fullName: string
+  phoneNumber: string
+  preferredLeaseLength: string
 }
+
+export const LEASE_LENGTH_OPTIONS: { value: string; label: string }[] = [
+  { value: '12 months', label: '12 months' },
+  { value: '9 months (academic year)', label: '9 months (academic year)' },
+  { value: '6 months', label: '6 months' },
+  { value: '1 month', label: '1 month / month-to-month' },
+  { value: 'August – May', label: 'August – May (school year)' },
+]
 
 export const AMENITY_OPTIONS: {
   value: AmenityTag
@@ -50,6 +61,9 @@ export const defaultStudentProfile: StudentProfile = {
   roommateCount: 0,
   mustHaves: [],
   dealbreakers: [],
+  fullName: '',
+  phoneNumber: '',
+  preferredLeaseLength: '',
 }
 
 export function profileToApi(profile: StudentProfile) {
@@ -63,6 +77,9 @@ export function profileToApi(profile: StudentProfile) {
     roommate_count: profile.roommateCount,
     must_haves: profile.mustHaves,
     dealbreakers: profile.dealbreakers,
+    full_name: profile.fullName,
+    phone_number: profile.phoneNumber,
+    preferred_lease_length: profile.preferredLeaseLength,
   }
 }
 
@@ -79,5 +96,8 @@ export function profileFromApi(data: Record<string, unknown>): StudentProfile {
     roommateCount: (data.roommate_count as number) ?? 0,
     mustHaves: (data.must_haves as AmenityTag[]) ?? [],
     dealbreakers: (data.dealbreakers as AmenityTag[]) ?? [],
+    fullName: (data.full_name as string) ?? '',
+    phoneNumber: (data.phone_number as string) ?? '',
+    preferredLeaseLength: (data.preferred_lease_length as string) ?? '',
   }
 }
