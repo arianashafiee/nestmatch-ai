@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
-import { MapPin } from 'lucide-react'
 import { ScoreBadge } from '@/components/apartments/ScoreBadge'
+import { ListingAddressDirections } from '@/components/apartments/ListingAddressDirections'
+import { CommuteToCampusLabel } from '@/components/apartments/CommuteToCampusLabel'
 import { cn } from '@/lib/utils'
 import { isSampleListing } from '@/lib/kanban'
 import type { Apartment } from '@/types/apartment'
@@ -23,14 +24,13 @@ export function ApartmentCard({ apartment, compact, pending }: ApartmentCardProp
   const showPhoto = Boolean(photos[0]) && (!compact || pending)
 
   return (
-    <Link
-      to={`/board/${apartment.id}`}
+    <div
       className={cn(
-        'block overflow-hidden rounded-xl border border-slate-200 bg-white transition-shadow hover:shadow-md',
-        compact && 'p-0',
+        'overflow-hidden rounded-xl border border-slate-200 bg-white transition-shadow hover:shadow-md',
         pending && 'border-indigo-200',
       )}
     >
+      <Link to={`/board/${apartment.id}`} className={cn('block', compact && 'p-0')}>
       {showPhoto && (
         <img
           src={photoProxyUrl(photos[0])}
@@ -55,11 +55,8 @@ export function ApartmentCard({ apartment, compact, pending }: ApartmentCardProp
               ${rent.toLocaleString()}/mo
             </p>
           )}
-          {analysis?.location && (
-            <p className="mt-1 flex items-center gap-1 text-xs text-slate-500">
-              <MapPin className="h-3 w-3 shrink-0" />
-              <span className="truncate">{analysis.location}</span>
-            </p>
+          {!pending && analysis && (
+            <CommuteToCampusLabel apartment={apartment} className="mt-1" />
           )}
           {!compact && analysis && (
             <p className="mt-2 line-clamp-2 text-xs text-slate-600">
@@ -88,7 +85,17 @@ export function ApartmentCard({ apartment, compact, pending }: ApartmentCardProp
         </p>
       )}
       </div>
-    </Link>
+      </Link>
+      {analysis && (
+        <div className="border-t border-slate-100 px-4 pb-3 pt-2">
+          <ListingAddressDirections
+            apartment={apartment}
+            compact
+            onPointerDown={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+    </div>
   )
 }
 

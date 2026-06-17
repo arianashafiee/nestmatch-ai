@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import Base, check_database_connection, engine
 from app.migrate import run_migrations
-from app.routers import apartments, auth, config, parse, photos, profile, search
+from app.routers import apartments, auth, commute, config, parse, photos, profile, search
 
 
 @asynccontextmanager
@@ -38,6 +38,7 @@ app.include_router(config.router)
 app.include_router(apartments.router)
 app.include_router(parse.router)
 app.include_router(search.router)
+app.include_router(commute.router)
 app.include_router(photos.router)
 
 

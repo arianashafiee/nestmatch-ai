@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom'
-import { MapPin, Star, Trash2 } from 'lucide-react'
+import { Star, Trash2 } from 'lucide-react'
 import { ScoreBadge } from '@/components/apartments/ScoreBadge'
+import { ListingAddressDirections } from '@/components/apartments/ListingAddressDirections'
+import { CommuteToCampusLabel } from '@/components/apartments/CommuteToCampusLabel'
 import { confirmDeleteListing } from '@/lib/listingActions'
 import { cn } from '@/lib/utils'
 import { KANBAN_COLUMNS } from '@/lib/kanban'
@@ -88,12 +90,12 @@ export function FavoritesSection({
                         ${rent.toLocaleString()}/mo
                       </p>
                     )}
-                    {analysis?.location && (
-                      <p className="mt-1 flex items-center gap-1 text-xs text-slate-500">
-                        <MapPin className="h-3 w-3 shrink-0" />
-                        <span className="truncate">{analysis.location}</span>
-                      </p>
-                    )}
+                    <CommuteToCampusLabel apartment={apt} className="mt-1" />
+                    <ListingAddressDirections
+                      apartment={apt}
+                      compact
+                      className="mt-1"
+                    />
                     <span className="mt-2 inline-block rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
                       {statusLabels[apt.status] ?? apt.status}
                     </span>

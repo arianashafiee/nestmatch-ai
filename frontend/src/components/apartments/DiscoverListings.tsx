@@ -20,6 +20,7 @@ import { useApartments } from '@/context/ApartmentsContext'
 import { useStudentProfile } from '@/context/StudentProfileContext'
 import { useToast } from '@/context/ToastContext'
 import { cn } from '@/lib/utils'
+import { commuteLabelFromDistance } from '@/lib/commute'
 import type { Apartment, SearchListingResult } from '@/types/apartment'
 import { normalizeApartment, photoProxyUrl } from '@/types/apartment'
 
@@ -410,15 +411,21 @@ export function DiscoverListings({ onAdded }: DiscoverListingsProps) {
                           ${listing.rent.toLocaleString()}/mo
                         </p>
                       )}
-                      {listing.commuteMinutes != null && (
-                        <p className="mt-1 text-xs font-medium text-emerald-700">
-                          ~{listing.commuteMinutes} min {profile.commuteMode}{' '}
-                          to campus
-                          {listing.distanceMiles != null
-                            ? ` (${listing.distanceMiles.toFixed(1)} mi)`
-                            : ''}
-                        </p>
-                      )}
+                      {(() => {
+                        const label = commuteLabelFromDistance(
+                          listing.distanceMiles,
+                          listing.commuteMinutes,
+                          profile.commuteMode,
+                        )
+                        return label ? (
+                          <p className="mt-1 text-xs font-medium text-emerald-700">
+                            {label}
+                            {listing.distanceMiles != null
+                              ? ` (${listing.distanceMiles.toFixed(1)} mi)`
+                              : ''}
+                          </p>
+                        ) : null
+                      })()}
                       {listing.listingAddress && (
                         <p className="mt-1 text-xs text-slate-500">
                           {listing.listingAddress}

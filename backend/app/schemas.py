@@ -4,7 +4,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field, model_validator
 
 
-CommuteModeLiteral = Literal["walking", "transit", "biking"]
+CommuteModeLiteral = Literal["walking", "transit", "biking", "driving"]
 LivingSituationLiteral = Literal["solo", "roommates"]
 AmenityTagLiteral = Literal[
     "laundry", "parking", "ac", "furnished", "no_basements"
@@ -166,6 +166,26 @@ class SearchListingsResponse(BaseModel):
     max_commute_minutes: int = 30
     commute_mode: CommuteModeLiteral = "walking"
     ai_ranked: bool = False
+
+
+class CommuteListingInput(BaseModel):
+    id: int
+    address: str = Field(min_length=3, max_length=500)
+
+
+class CommuteBatchRequest(BaseModel):
+    listings: list[CommuteListingInput] = Field(max_length=100)
+
+
+class CommuteEstimate(BaseModel):
+    minutes: int
+    distance_miles: float
+
+
+class CommuteBatchResponse(BaseModel):
+    results: dict[int, CommuteEstimate]
+    campus_geocoded: bool = False
+    commute_mode: CommuteModeLiteral = "walking"
 
 
 class AppConfigResponse(BaseModel):

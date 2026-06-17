@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { Loader2, MapPin, Navigation } from 'lucide-react'
+import { formatCommuteToCampus } from '@/lib/commute'
 import { fetchAppConfig } from '@/lib/api'
+import { geocodeAddress } from '@/lib/geo'
 import { useStudentProfile } from '@/context/StudentProfileContext'
 import { MapPlaceholder } from '@/components/apartments/MapPlaceholder'
 
@@ -19,23 +21,7 @@ async function geocodeLocation(
   token: string,
   proximity?: [number, number],
 ): Promise<[number, number] | null> {
-  const params = new URLSearchParams({
-    access_token: token,
-    limit: '1',
-    country: 'us',
-  })
-  if (proximity) {
-    params.set('proximity', `${proximity[0]},${proximity[1]}`)
-  }
-  const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?${params}`
-  const response = await fetch(url)
-  if (!response.ok) return null
-  const data = (await response.json()) as {
-    features?: { center: [number, number]; place_type?: string[] }[]
-  }
-  const feature = data.features?.[0]
-  if (!feature?.center) return null
-  return feature.center
+  return geocodeAddress(query, token, proximity)
 }
 
 function sameCoords(
@@ -195,7 +181,7 @@ export function ListingMap({
       {commuteMinutes != null && (
         <div className="flex items-center gap-2 border-t border-slate-100 px-4 py-3 text-sm text-slate-600">
           <Navigation className="h-4 w-4 text-indigo-600" />
-          Estimated {commuteMinutes} min {profile.commuteMode} to campus
+          {formatCommuteToCampus(commuteMinutes, profile.commuteMode)}
         </div>
       )}
     </div>

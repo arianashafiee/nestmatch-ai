@@ -91,7 +91,7 @@ export interface SearchListingsResponse {
   maxRent: number
   campusGeocoded: boolean
   maxCommuteMinutes: number
-  commuteMode: 'walking' | 'transit' | 'biking'
+  commuteMode: 'walking' | 'transit' | 'biking' | 'driving'
   aiRanked: boolean
 }
 

@@ -6,6 +6,9 @@ import {
   XCircle,
 } from 'lucide-react'
 import { ScoreBadge } from '@/components/apartments/ScoreBadge'
+import { useApartmentCommute } from '@/context/CommuteContext'
+import { useStudentProfile } from '@/context/StudentProfileContext'
+import { formatCommuteToCampus } from '@/lib/commute'
 import { cn } from '@/lib/utils'
 import {
   SCORE_CATEGORIES,
@@ -44,7 +47,15 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
   )
 }
 
-function AnalysisContent({ analysis }: { analysis: ListingAnalysis }) {
+function AnalysisContent({
+  analysis,
+  apartmentId,
+}: {
+  analysis: ListingAnalysis
+  apartmentId: number
+}) {
+  const { profile } = useStudentProfile()
+  const commute = useApartmentCommute(apartmentId)
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -69,9 +80,11 @@ function AnalysisContent({ analysis }: { analysis: ListingAnalysis }) {
             {analysis.bathrooms != null && (
               <span>{analysis.bathrooms} bath</span>
             )}
-            {analysis.estimated_commute_minutes != null && (
+            {commute != null ? (
+              <span>{formatCommuteToCampus(commute.minutes, profile.commuteMode)}</span>
+            ) : analysis.estimated_commute_minutes != null ? (
               <span>{analysis.estimated_commute_minutes} min commute</span>
-            )}
+            ) : null}
           </div>
         </div>
         <ScoreBadge score={analysis.compatibility_score} size="lg" />
@@ -184,7 +197,7 @@ export function AnalysisDashboard({
 
   return (
     <div className="space-y-6">
-      <AnalysisContent analysis={apartment.analysis} />
+      <AnalysisContent analysis={apartment.analysis} apartmentId={apartment.id} />
       {showRawText && (
         <details className="rounded-xl border border-slate-200 bg-slate-50 p-4">
           <summary className="cursor-pointer text-sm font-medium text-slate-700">

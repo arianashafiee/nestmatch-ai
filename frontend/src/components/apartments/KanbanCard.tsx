@@ -3,11 +3,12 @@ import {
   ChevronLeft,
   ChevronRight,
   GripVertical,
-  MapPin,
   Star,
   Trash2,
 } from 'lucide-react'
 import { ScoreBadge } from '@/components/apartments/ScoreBadge'
+import { ListingAddressDirections } from '@/components/apartments/ListingAddressDirections'
+import { CommuteToCampusLabel } from '@/components/apartments/CommuteToCampusLabel'
 import { formatTourDateTime } from '@/lib/tours'
 import { confirmDeleteListing } from '@/lib/listingActions'
 import { cn } from '@/lib/utils'
@@ -127,11 +128,14 @@ export function KanbanCard({
               ${rent.toLocaleString()}/mo
             </p>
           )}
-          {analysis?.location && (
-            <p className="mt-1 flex items-center gap-1 text-xs text-slate-500">
-              <MapPin className="h-3 w-3 shrink-0" />
-              <span className="truncate">{analysis.location}</span>
-            </p>
+          <CommuteToCampusLabel apartment={apartment} className="mt-1" />
+          {analysis && (
+            <ListingAddressDirections
+              apartment={apartment}
+              compact
+              className="mt-1"
+              onPointerDown={(e) => e.stopPropagation()}
+            />
           )}
           {apartment.tourAt && (
             <p className="mt-1 text-[10px] font-medium text-indigo-700">

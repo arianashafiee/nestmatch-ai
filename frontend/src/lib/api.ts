@@ -155,6 +155,37 @@ export async function searchListings(): Promise<SearchListingsResponse> {
   }
 }
 
+export async function fetchCommuteBatch(
+  listings: { id: number; address: string }[],
+): Promise<{
+  results: Record<number, { minutes: number; distanceMiles: number }>
+  campusGeocoded: boolean
+  commuteMode: string
+}> {
+  const data = await request<Record<string, unknown>>('/commute/estimate-batch', {
+    method: 'POST',
+    body: JSON.stringify({
+      listings: listings.map((item) => ({
+        id: item.id,
+        address: item.address,
+      })),
+    }),
+  })
+  const raw = (data.results as Record<string, { minutes: number; distance_miles: number }>) ?? {}
+  const results: Record<number, { minutes: number; distanceMiles: number }> = {}
+  for (const [id, estimate] of Object.entries(raw)) {
+    results[Number(id)] = {
+      minutes: estimate.minutes,
+      distanceMiles: estimate.distance_miles,
+    }
+  }
+  return {
+    results,
+    campusGeocoded: Boolean(data.campus_geocoded),
+    commuteMode: String(data.commute_mode ?? 'walking'),
+  }
+}
+
 export async function refreshListingPhotos(id: number): Promise<Apartment> {
   const data = await request<Record<string, unknown>>(
     `/apartments/${id}/refresh-photos`,

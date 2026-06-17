@@ -82,7 +82,7 @@ export function KanbanBoard({
 
   return (
     <>
-      <div className="flex gap-4 overflow-x-auto pb-4">
+      <div className="flex items-stretch gap-4 overflow-x-auto overflow-y-visible pb-4">
         {KANBAN_COLUMNS.map((column) => {
           const columnItems = boardApartments.filter(
             (a) => a.status === column.key,
@@ -96,26 +96,32 @@ export function KanbanBoard({
           return (
             <div
               key={column.key}
-              className="min-w-[260px] flex-1"
-              onDragOver={(e) => {
-                e.preventDefault()
-                setDropTarget(column.key)
-              }}
-              onDragLeave={() => setDropTarget(null)}
-              onDrop={(e) => {
-                e.preventDefault()
-                handleDrop(column.key)
-              }}
+              className="flex min-w-[260px] flex-1 flex-col self-stretch"
             >
               <div
                 className={cn(
-                  'rounded-xl border p-4 transition-colors',
+                  'flex min-h-full flex-1 flex-col rounded-xl border p-4 transition-colors',
                   isTarget
                     ? 'border-indigo-400 bg-indigo-50/80'
                     : 'border-slate-200 bg-slate-50',
                 )}
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  setDropTarget(column.key)
+                }}
+                onDragLeave={(e) => {
+                  if (
+                    !e.currentTarget.contains(e.relatedTarget as Node)
+                  ) {
+                    setDropTarget(null)
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  handleDrop(column.key)
+                }}
               >
-                <div className="mb-3">
+                <div className="mb-3 shrink-0">
                   <h3 className="text-sm font-semibold text-slate-800">
                     {column.label}
                     <span className="ml-1.5 font-normal text-slate-400">
@@ -130,30 +136,43 @@ export function KanbanBoard({
                   )}
                 </div>
 
-                <div className="space-y-2">
+                <div className="flex min-h-0 flex-1 flex-col space-y-2">
                   {items.length === 0 ? (
                     <div
                       className={cn(
-                        'rounded-lg border border-dashed py-10 text-center text-xs text-slate-400',
+                        'flex flex-1 items-center justify-center rounded-lg border border-dashed py-10 text-center text-xs',
                         isTarget
                           ? 'border-indigo-300 bg-indigo-50 text-indigo-500'
-                          : 'border-slate-200 bg-white',
+                          : 'border-slate-200 bg-white text-slate-400',
                       )}
                     >
                       {isTarget ? 'Drop here' : 'Drag a card here'}
                     </div>
                   ) : (
-                    items.map((apt) => (
-                      <KanbanCard
-                        key={apt.id}
-                        apartment={apt}
-                        onMove={attemptMove}
-                        onRequestTourSchedule={() => setScheduleListingId(apt.id)}
-                        onToggleFavorite={onToggleFavorite}
-                        onDelete={onDelete}
-                        onDragStart={setDraggingId}
+                    <>
+                      {items.map((apt) => (
+                        <KanbanCard
+                          key={apt.id}
+                          apartment={apt}
+                          onMove={attemptMove}
+                          onRequestTourSchedule={() =>
+                            setScheduleListingId(apt.id)
+                          }
+                          onToggleFavorite={onToggleFavorite}
+                          onDelete={onDelete}
+                          onDragStart={setDraggingId}
+                        />
+                      ))}
+                      <div
+                        className={cn(
+                          'min-h-[3rem] flex-1 rounded-lg border border-dashed transition-colors',
+                          isTarget
+                            ? 'border-indigo-200 bg-indigo-50/50'
+                            : 'border-transparent',
+                        )}
+                        aria-hidden
                       />
-                    ))
+                    </>
                   )}
                 </div>
               </div>

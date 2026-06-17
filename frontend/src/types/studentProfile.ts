@@ -1,4 +1,4 @@
-export type CommuteMode = 'walking' | 'transit' | 'biking'
+export type CommuteMode = 'walking' | 'transit' | 'biking' | 'driving'
 
 export type AmenityTag =
   | 'laundry'
@@ -49,6 +49,7 @@ export const COMMUTE_OPTIONS: {
   { value: 'walking', label: 'Walking' },
   { value: 'transit', label: 'Transit' },
   { value: 'biking', label: 'Biking' },
+  { value: 'driving', label: 'Driving' },
 ]
 
 export const defaultStudentProfile: StudentProfile = {

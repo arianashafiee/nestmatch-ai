@@ -1,4 +1,5 @@
 import { MapPin, Navigation } from 'lucide-react'
+import { formatCommuteToCampus } from '@/lib/commute'
 import { useStudentProfile } from '@/context/StudentProfileContext'
 
 interface MapPlaceholderProps {
@@ -54,7 +55,7 @@ export function MapPlaceholder({ location, commuteMinutes }: MapPlaceholderProps
       {commuteMinutes != null && (
         <div className="flex items-center gap-2 border-t border-slate-100 px-4 py-3 text-sm text-slate-600">
           <Navigation className="h-4 w-4 text-indigo-600" />
-          Estimated {commuteMinutes} min {profile.commuteMode} to campus
+          {formatCommuteToCampus(commuteMinutes, profile.commuteMode)}
         </div>
       )}
     </div>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   Bike,
   Bus,
+  Car,
   CheckCircle2,
   Footprints,
   Loader2,
@@ -28,6 +29,7 @@ const commuteIcons: Record<CommuteMode, typeof Footprints> = {
   walking: Footprints,
   transit: Bus,
   biking: Bike,
+  driving: Car,
 }
 
 interface StudentProfileFormProps {
