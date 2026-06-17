@@ -5,11 +5,13 @@ import { AnalysisDashboard } from '@/components/apartments/AnalysisDashboard'
 import { LandlordContactCard } from '@/components/apartments/LandlordContactCard'
 import { LandlordMessageGenerator } from '@/components/apartments/LandlordMessageGenerator'
 import { ListingMap } from '@/components/apartments/ListingMap'
-import { ListingProgressChecklist } from '@/components/apartments/ListingProgressChecklist'
+import { ListingPipeline } from '@/components/apartments/ListingPipeline'
+import { ListingTourNotes } from '@/components/apartments/ListingTourNotes'
 import { ParsingOverlay } from '@/components/apartments/ParsingOverlay'
 import { PhotoGallery } from '@/components/apartments/PhotoGallery'
 import { Button } from '@/components/ui/Button'
 import { useApartments } from '@/context/ApartmentsContext'
+import { useApartmentCommute } from '@/context/CommuteContext'
 import { refreshListingPhotos, fetchApartment } from '@/lib/api'
 import { isSampleListing } from '@/lib/kanban'
 import type { Apartment } from '@/types/apartment'
@@ -17,15 +19,17 @@ import { mapLocationForApartment } from '@/types/apartment'
 
 export function ListingDetailPage() {
   const { id } = useParams<{ id: string }>()
-  const { apartments, parsingIds, parseApartment, updateStatus, toggleFavorite, syncApartment } =
+  const { apartments, parsingIds, parseApartment, updateApartmentListing, toggleFavorite, syncApartment } =
     useApartments()
   const [apartment, setApartment] = useState<Apartment | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshingPhotos, setIsRefreshingPhotos] = useState(false)
+  const [isSavingPipeline, setIsSavingPipeline] = useState(false)
 
   const apartmentId = Number(id)
   const isParsing = parsingIds.includes(apartmentId)
   const sample = apartment ? isSampleListing(apartment.rawText) : false
+  const commuteEstimate = useApartmentCommute(apartmentId)
 
   useEffect(() => {
     const fromContext = apartments.find((a) => a.id === apartmentId)
@@ -167,10 +171,32 @@ export function ListingDetailPage() {
       />
 
       {analysis && apartment.status !== 'pending' && (
-        <ListingProgressChecklist
-          status={apartment.status}
-          onStatusChange={(status) => updateStatus(apartment.id, status)}
-        />
+        <>
+          <ListingPipeline
+            apartment={apartment}
+            isSaving={isSavingPipeline}
+            onUpdate={async (updates) => {
+              setIsSavingPipeline(true)
+              try {
+                await updateApartmentListing(apartment.id, updates)
+              } finally {
+                setIsSavingPipeline(false)
+              }
+            }}
+          />
+          <ListingTourNotes
+            apartment={apartment}
+            isSaving={isSavingPipeline}
+            onSaveNotes={async (notes) => {
+              setIsSavingPipeline(true)
+              try {
+                await updateApartmentListing(apartment.id, { tourNotes: notes })
+              } finally {
+                setIsSavingPipeline(false)
+              }
+            }}
+          />
+        </>
       )}
 
       {isParsing || (!analysis && apartment.status === 'pending') ? (
@@ -186,7 +212,7 @@ export function ListingDetailPage() {
               <ListingMap
                 location={mapLocation}
                 fallbackLabel={analysis.location}
-                commuteMinutes={analysis.estimated_commute_minutes}
+                commuteMinutes={commuteEstimate?.minutes ?? null}
               />
             </>
           )}

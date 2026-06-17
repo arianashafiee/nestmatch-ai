@@ -8,8 +8,10 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { ToastContainer } from '@/components/ui/ToastContainer'
 import { ApartmentsProvider } from '@/context/ApartmentsContext'
 import { AuthProvider } from '@/context/AuthContext'
+import { CommuteProvider } from '@/context/CommuteContext'
 import { StudentProfileProvider } from '@/context/StudentProfileContext'
 import { ToastProvider } from '@/context/ToastContext'
+import { CalendarPage } from '@/pages/CalendarPage'
 import { AnalyticsPage } from '@/pages/AnalyticsPage'
 import { HomePage } from '@/pages/HomePage'
 import { HuntingBoardPage } from '@/pages/HuntingBoardPage'
@@ -23,8 +25,10 @@ function AuthenticatedApp() {
   return (
     <StudentProfileProvider>
       <ApartmentsProvider>
-        <DashboardLayout />
-        <AddApartmentModal />
+        <CommuteProvider>
+          <DashboardLayout />
+          <AddApartmentModal />
+        </CommuteProvider>
       </ApartmentsProvider>
     </StudentProfileProvider>
   )
@@ -47,6 +51,7 @@ export default function App() {
                 <Route path="profile" element={<ProfilePage />} />
                 <Route path="board/:id" element={<ListingDetailPage />} />
                 <Route path="board" element={<HuntingBoardPage />} />
+                <Route path="calendar" element={<CalendarPage />} />
                 <Route path="analytics" element={<AnalyticsPage />} />
                 <Route path="settings" element={<SettingsPage />} />
               </Route>

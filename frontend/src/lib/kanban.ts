@@ -79,6 +79,18 @@ export function isMilestoneComplete(
   return statusIdx >= milestoneIdx
 }
 
+/** Whether the user can take action on this milestone next. */
+export function canAdvanceToMilestone(
+  status: ApartmentStatus,
+  milestone: PipelineMilestone,
+): boolean {
+  if (status === 'archived' || status === 'pending') return false
+  if (milestone === 'contacted') return status === 'interested'
+  if (milestone === 'tour_scheduled') return status === 'contacted'
+  if (milestone === 'applied') return status === 'tour_scheduled'
+  return false
+}
+
 /** Status to set when unchecking a milestone checkbox. */
 export function milestoneForStatus(
   milestone: PipelineMilestone,

@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { BarChart3, Home, Kanban } from 'lucide-react'
+import { BarChart3, CalendarDays, Home, Kanban } from 'lucide-react'
 import { Sidebar } from './Sidebar'
 import { TopNavbar } from './TopNavbar'
+import { TourReminderBanner } from '@/components/apartments/TourReminderBanner'
 import { cn } from '@/lib/utils'
 
 const mobileNavItems = [
   { to: '/', label: 'Home', icon: Home, end: true },
   { to: '/board', label: 'Board', icon: Kanban },
+  { to: '/calendar', label: 'Calendar', icon: CalendarDays },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
 ]
 
@@ -66,6 +68,7 @@ export function DashboardLayout() {
           onMenuToggle={() => setIsMobileMenuOpen((open) => !open)}
           isMobileMenuOpen={isMobileMenuOpen}
         />
+        <TourReminderBanner />
         <main className="flex-1 overflow-auto p-4 md:p-6">
           <Outlet />
         </main>
