@@ -1,0 +1,12 @@
+**/.venv
+**/node_modules
+**/__pycache__
+**/.env
+**/.env.local
+**/dist
+**/.git
+**/nestmatch.db
+cypress-tfa
+*.md
+!backend/**/*.md
+docs

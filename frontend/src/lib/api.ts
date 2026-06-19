@@ -6,7 +6,7 @@ import {
   type StudentProfile,
 } from '@/types/studentProfile'
 
-const API_BASE = '/api'
+const API_BASE = import.meta.env.VITE_API_BASE || '/api'
 
 function getAuthToken(): string | null {
   return localStorage.getItem('nestmatch-auth-token')

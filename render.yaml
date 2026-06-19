@@ -1,0 +1,24 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# After connecting this repo, set secret env vars in the Render dashboard
+# (OPENAI_API_KEY, MAPBOX_ACCESS_TOKEN, JWT_SECRET). Never commit real keys.
+
+services:
+  - type: web
+    name: nestmatch-ai
+    runtime: docker
+    plan: free
+    region: virginia
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        value: sqlite:///./nestmatch.db
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DEBUG
+        value: "false"
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: MAPBOX_ACCESS_TOKEN
+        sync: false
+      - key: MAPBOX_STYLE_URL
+        value: mapbox://styles/mapbox/streets-v12

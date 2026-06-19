@@ -1,12 +1,18 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import Base, check_database_connection, engine
 from app.migrate import run_migrations
 from app.routers import apartments, auth, commute, config, parse, photos, profile, search
+
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
+_STATIC_DIR = _BACKEND_DIR / "static"
 
 
 @asynccontextmanager
@@ -55,5 +61,35 @@ def health_check() -> dict:
 
 
 @app.get("/")
-def root() -> dict:
+def root():
+    index_html = _STATIC_DIR / "index.html"
+    if index_html.is_file():
+        return FileResponse(index_html)
     return {"message": "NestMatch AI API", "docs": "/docs"}
+
+
+def _mount_frontend(app: FastAPI) -> None:
+    if not _STATIC_DIR.is_dir():
+        return
+
+    assets_dir = _STATIC_DIR / "assets"
+    if assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    index_html = _STATIC_DIR / "index.html"
+    if not index_html.is_file():
+        return
+
+    @app.get("/{spa_path:path}", include_in_schema=False)
+    async def serve_spa(spa_path: str):
+        if spa_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not found")
+        if spa_path in ("docs", "openapi.json", "redoc"):
+            raise HTTPException(status_code=404, detail="Not found")
+        candidate = _STATIC_DIR / spa_path
+        if spa_path and candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(index_html)
+
+
+_mount_frontend(app)

@@ -195,6 +195,52 @@ App: http://localhost:5173
 
 ---
 
+## Deploy to Production (Render)
+
+NestMatch ships as a **single Docker container** (React frontend + FastAPI API on one URL). Secrets are set in the hosting dashboard — **never** committed to git.
+
+### 1. Push to GitHub
+
+```bash
+git add Dockerfile render.yaml .dockerignore
+git commit -m "Add production Docker deployment for Render"
+git push origin main
+```
+
+### 2. Make the repository public
+
+```bash
+gh repo edit --visibility public
+```
+
+Or: GitHub → **Settings** → **General** → **Change repository visibility** → Public.
+
+### 3. Deploy on Render
+
+1. Go to [render.com](https://render.com) and sign in with GitHub.
+2. **New** → **Blueprint** → connect `nestmatch-ai`.
+3. Render reads `render.yaml` and creates the web service.
+4. When prompted, add these **secret** environment variables (copy from your local `backend/.env`):
+   - `OPENAI_API_KEY`
+   - `MAPBOX_ACCESS_TOKEN`
+5. Click **Apply**. First deploy takes ~5–10 minutes.
+
+Your live URL will look like: `https://nestmatch-ai.onrender.com`
+
+### Environment variables (production)
+
+| Variable | Required | Notes |
+|----------|----------|--------|
+| `OPENAI_API_KEY` | Recommended | AI scoring + GPT search |
+| `MAPBOX_ACCESS_TOKEN` | Recommended | Maps + accurate commute |
+| `JWT_SECRET` | Auto-generated | Render creates this from `render.yaml` |
+| `DATABASE_URL` | Default OK | SQLite (`sqlite:///./nestmatch.db`) |
+| `DEBUG` | `false` | Set in `render.yaml` |
+
+Health check: `https://your-app.onrender.com/api/health` should show `"ai":"openai"` and `"mapbox":"configured"` when keys are set.
+
+---
+
 ## Project Structure
 
 ```
