@@ -2,8 +2,6 @@
 
 AI-powered apartment hunting for college students. Set your profile once, search rental sites near campus, get compatibility scores, and track every listing from first look to lease signed.
 
-**Live app:** http://localhost:5173 (after starting frontend + backend)
-
 ---
 
 ## How the App Works — User Workflow
