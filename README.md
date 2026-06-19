@@ -217,6 +217,10 @@ Or: GitHub → **Settings** → **General** → **Change repository visibility**
 
 ### 3. Deploy on Render
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/arianashafiee/nestmatch-ai)
+
+Or manually:
+
 1. Go to [render.com](https://render.com) and sign in with GitHub.
 2. **New** → **Blueprint** → connect `nestmatch-ai`.
 3. Render reads `render.yaml` and creates the web service.
