@@ -79,7 +79,7 @@ export function HomePage() {
           <p className="mt-1 text-sm text-slate-500">
             {isProfileComplete
               ? `Budget: $${profile.maxRent}/mo · ${profile.maxCommuteMinutes} min ${profile.commuteMode}`
-              : 'Set your budget, commute, and must-haves'}
+              : 'Set your budget, commute, and living situation'}
           </p>
         </Link>
 

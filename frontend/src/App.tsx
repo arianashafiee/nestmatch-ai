@@ -19,7 +19,6 @@ import { ListingDetailPage } from '@/pages/ListingDetailPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { ProfilePage } from '@/pages/ProfilePage'
 import { RegisterPage } from '@/pages/RegisterPage'
-import { SettingsPage } from '@/pages/SettingsPage'
 
 function AuthenticatedApp() {
   return (
@@ -53,7 +52,7 @@ export default function App() {
                 <Route path="board" element={<HuntingBoardPage />} />
                 <Route path="calendar" element={<CalendarPage />} />
                 <Route path="analytics" element={<AnalyticsPage />} />
-                <Route path="settings" element={<SettingsPage />} />
+                <Route path="settings" element={<Navigate to="/profile" replace />} />
               </Route>
             </Route>
 

@@ -40,11 +40,7 @@ export function MapPlaceholder({ location, commuteMinutes }: MapPlaceholderProps
           </div>
           <p className="mt-3 text-sm font-medium text-slate-700">{location}</p>
           <p className="mt-1 text-xs text-slate-500">
-            Add a Mapbox token in backend .env — see{' '}
-            <a href="/settings" className="text-indigo-600 hover:underline">
-              Settings
-            </a>{' '}
-            for setup steps
+            Add a Mapbox token in backend .env to enable live maps.
           </p>
         </div>
         <div className="absolute bottom-3 left-3 rounded-lg bg-white/90 px-3 py-1.5 text-xs shadow">

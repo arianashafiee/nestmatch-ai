@@ -11,20 +11,17 @@ import {
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { StepIndicator } from '@/components/ui/StepIndicator'
-import { TagToggle } from '@/components/ui/TagToggle'
 import { useStudentProfile } from '@/context/StudentProfileContext'
 import { rentBudgetLabel } from '@/lib/rentSharing'
 import { cn } from '@/lib/utils'
 import {
-  AMENITY_OPTIONS,
   COMMUTE_OPTIONS,
   LEASE_LENGTH_OPTIONS,
-  type AmenityTag,
   type CommuteMode,
   type StudentProfile,
 } from '@/types/studentProfile'
 
-const STEPS = ['Campus & Budget', 'Commute & Living', 'Contact & Lease', 'Preferences']
+const STEPS = ['Campus & Budget', 'Commute & Living', 'Contact & Lease']
 
 const commuteIcons: Record<CommuteMode, typeof Footprints> = {
   walking: Footprints,
@@ -61,17 +58,6 @@ export function StudentProfileForm({ onSaved }: StudentProfileFormProps) {
     setDraft((prev) => ({ ...prev, ...updates }))
     setSaved(false)
     setErrors({})
-  }
-
-  const toggleAmenity = (
-    field: 'mustHaves' | 'dealbreakers',
-    tag: AmenityTag,
-  ) => {
-    const list = draft[field]
-    const next = list.includes(tag)
-      ? list.filter((t) => t !== tag)
-      : [...list, tag]
-    updateDraft({ [field]: next })
   }
 
   const validateStep = (currentStep: number): boolean => {
@@ -352,47 +338,6 @@ export function StudentProfileForm({ onSaved }: StudentProfileFormProps) {
               {errors.preferredLeaseLength && (
                 <p className="text-sm text-red-600">{errors.preferredLeaseLength}</p>
               )}
-            </div>
-          </div>
-        )}
-
-        {step === 3 && (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900">
-                Must-haves & dealbreakers
-              </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Toggle tags to tell NestMatch what matters most to you.
-              </p>
-            </div>
-            <div className="space-y-3">
-              <p className="text-sm font-medium text-emerald-700">Must-haves</p>
-              <div className="flex flex-wrap gap-2">
-                {AMENITY_OPTIONS.map(({ value, label }) => (
-                  <TagToggle
-                    key={`must-${value}`}
-                    label={label}
-                    selected={draft.mustHaves.includes(value)}
-                    onToggle={() => toggleAmenity('mustHaves', value)}
-                    variant="must-have"
-                  />
-                ))}
-              </div>
-            </div>
-            <div className="space-y-3">
-              <p className="text-sm font-medium text-red-600">Dealbreakers</p>
-              <div className="flex flex-wrap gap-2">
-                {AMENITY_OPTIONS.map(({ value, label }) => (
-                  <TagToggle
-                    key={`deal-${value}`}
-                    label={label}
-                    selected={draft.dealbreakers.includes(value)}
-                    onToggle={() => toggleAmenity('dealbreakers', value)}
-                    variant="dealbreaker"
-                  />
-                ))}
-              </div>
             </div>
           </div>
         )}
