@@ -213,8 +213,6 @@ export function DiscoverListings({ onAdded }: DiscoverListingsProps) {
           filtered by your max {profile.commuteMode} commute (
           {profile.maxCommuteMinutes} min), {bedroomRequirementLabel(profile)}{' '}
           size, and budget ({rentBudgetLabel(profile)}).
-          With <strong>OpenAI</strong> configured, results are also AI-ranked
-          and summarized for your profile.
         </p>
         {hasCachedResults && (
           <p className="mt-2 text-xs text-indigo-700">
