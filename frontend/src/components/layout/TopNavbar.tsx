@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Bell, LogOut, Menu, Plus, Search, UserCircle, X } from 'lucide-react'
+import { Bell, LogOut, Menu, Plus, UserCircle, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { useApartments } from '@/context/ApartmentsContext'
 import { useAuth } from '@/context/AuthContext'
@@ -109,16 +109,6 @@ export function TopNavbar({ onMenuToggle, isMobileMenuOpen }: TopNavbarProps) {
             />
           )}
         </Button>
-
-        <div className="hidden items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 lg:flex">
-          <Search className="h-4 w-4 text-slate-400" />
-          <input
-            type="search"
-            placeholder="Search listings..."
-            className="w-40 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 lg:w-56"
-            disabled
-          />
-        </div>
 
         {!isProfileComplete && (
           <Link
