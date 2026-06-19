@@ -21,7 +21,7 @@ import {
   type StudentProfile,
 } from '@/types/studentProfile'
 
-const STEPS = ['Campus & Budget', 'Commute & Living', 'Contact & Lease']
+const STEPS = ['Campus & Budget', 'Commute & Living', 'Contact']
 
 const commuteIcons: Record<CommuteMode, typeof Footprints> = {
   walking: Footprints,
@@ -79,13 +79,13 @@ export function StudentProfileForm({ onSaved }: StudentProfileFormProps) {
       ) {
         nextErrors.roommateCount = 'Enter number of roommates'
       }
+      if (!draft.preferredLeaseLength.trim())
+        nextErrors.preferredLeaseLength = 'Select your preferred lease length'
     }
 
     if (currentStep === 2) {
       if (!draft.fullName.trim()) nextErrors.fullName = 'Required'
       if (!draft.phoneNumber.trim()) nextErrors.phoneNumber = 'Required'
-      if (!draft.preferredLeaseLength.trim())
-        nextErrors.preferredLeaseLength = 'Select your preferred lease length'
     }
 
     setErrors(nextErrors)
@@ -283,37 +283,6 @@ export function StudentProfileForm({ onSaved }: StudentProfileFormProps) {
                 />
               )}
             </div>
-          </div>
-        )}
-
-        {step === 2 && (
-          <div className="space-y-5">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900">
-                Contact & lease preferences
-              </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Used in your landlord outreach emails and to match listings to your
-                preferred lease term.
-              </p>
-            </div>
-            <Input
-              id="fullName"
-              label="Your name"
-              placeholder="e.g. John Doe"
-              value={draft.fullName}
-              onChange={(e) => updateDraft({ fullName: e.target.value })}
-              error={errors.fullName}
-            />
-            <Input
-              id="phoneNumber"
-              label="Phone number"
-              type="tel"
-              placeholder="e.g. 1234567890"
-              value={draft.phoneNumber}
-              onChange={(e) => updateDraft({ phoneNumber: e.target.value })}
-              error={errors.phoneNumber}
-            />
             <div className="space-y-2">
               <p className="text-sm font-medium text-slate-700">
                 Preferred lease length
@@ -339,6 +308,36 @@ export function StudentProfileForm({ onSaved }: StudentProfileFormProps) {
                 <p className="text-sm text-red-600">{errors.preferredLeaseLength}</p>
               )}
             </div>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="space-y-5">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">
+                Contact info
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Used in your landlord outreach emails.
+              </p>
+            </div>
+            <Input
+              id="fullName"
+              label="Your name"
+              placeholder="e.g. John Doe"
+              value={draft.fullName}
+              onChange={(e) => updateDraft({ fullName: e.target.value })}
+              error={errors.fullName}
+            />
+            <Input
+              id="phoneNumber"
+              label="Phone number"
+              type="tel"
+              placeholder="e.g. 1234567890"
+              value={draft.phoneNumber}
+              onChange={(e) => updateDraft({ phoneNumber: e.target.value })}
+              error={errors.phoneNumber}
+            />
           </div>
         )}
       </div>
