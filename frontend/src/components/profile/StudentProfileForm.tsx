@@ -150,7 +150,7 @@ export function StudentProfileForm({ onSaved }: StudentProfileFormProps) {
             <Input
               id="university"
               label="University"
-              placeholder="e.g. University of Michigan"
+              placeholder="e.g. Johns Hopkins University"
               value={draft.university}
               onChange={(e) => updateDraft({ university: e.target.value })}
               error={errors.university}
