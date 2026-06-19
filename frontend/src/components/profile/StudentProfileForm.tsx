@@ -158,7 +158,7 @@ export function StudentProfileForm({ onSaved }: StudentProfileFormProps) {
             <Input
               id="campusLocation"
               label="Campus location"
-              placeholder="e.g. Ann Arbor, MI or specific campus address"
+              placeholder="e.g. 3400 N Charles St, Baltimore, MD 21218"
               value={draft.campusLocation}
               onChange={(e) => updateDraft({ campusLocation: e.target.value })}
               error={errors.campusLocation}
