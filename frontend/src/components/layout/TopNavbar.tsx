@@ -8,9 +8,8 @@ import { useStudentProfile } from '@/context/StudentProfileContext'
 import { cn } from '@/lib/utils'
 
 const pageTitles: Record<string, string> = {
-  '/': 'Dashboard',
+  '/': 'Hunting Board',
   '/profile': 'Student Profile',
-  '/board': 'Hunting Board',
   '/calendar': 'Tour Calendar',
   '/analytics': 'Analytics',
 }

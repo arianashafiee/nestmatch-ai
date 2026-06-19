@@ -13,7 +13,6 @@ import { StudentProfileProvider } from '@/context/StudentProfileContext'
 import { ToastProvider } from '@/context/ToastContext'
 import { CalendarPage } from '@/pages/CalendarPage'
 import { AnalyticsPage } from '@/pages/AnalyticsPage'
-import { HomePage } from '@/pages/HomePage'
 import { HuntingBoardPage } from '@/pages/HuntingBoardPage'
 import { ListingDetailPage } from '@/pages/ListingDetailPage'
 import { LoginPage } from '@/pages/LoginPage'
@@ -46,10 +45,10 @@ export default function App() {
 
             <Route element={<ProtectedRoute />}>
               <Route element={<AuthenticatedApp />}>
-                <Route index element={<HomePage />} />
+                <Route index element={<HuntingBoardPage />} />
                 <Route path="profile" element={<ProfilePage />} />
                 <Route path="board/:id" element={<ListingDetailPage />} />
-                <Route path="board" element={<HuntingBoardPage />} />
+                <Route path="board" element={<Navigate to="/" replace />} />
                 <Route path="calendar" element={<CalendarPage />} />
                 <Route path="analytics" element={<AnalyticsPage />} />
                 <Route path="settings" element={<Navigate to="/profile" replace />} />

@@ -1,11 +1,10 @@
 import { NavLink } from 'react-router-dom'
-import { BarChart3, CalendarDays, Home, Kanban } from 'lucide-react'
+import { BarChart3, CalendarDays, Kanban } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
 
 const navItems = [
-  { to: '/', label: 'Home', icon: Home, end: true },
-  { to: '/board', label: 'Hunting Board', icon: Kanban },
+  { to: '/', label: 'Hunting Board', icon: Kanban, end: true },
   { to: '/calendar', label: 'Tour Calendar', icon: CalendarDays },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
 ]

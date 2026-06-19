@@ -22,7 +22,7 @@ export function ProfilePage() {
           </p>
         )}
       </div>
-      <StudentProfileForm onSaved={() => navigate('/board')} />
+      <StudentProfileForm onSaved={() => navigate('/')} />
     </div>
   )
 }

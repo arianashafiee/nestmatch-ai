@@ -80,7 +80,7 @@ export function ListingDetailPage() {
       <div className="mx-auto max-w-lg text-center">
         <p className="text-slate-600">Listing not found.</p>
         <Link
-          to="/board"
+          to="/"
           className="mt-4 inline-flex h-10 items-center rounded-lg border border-slate-300 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
         >
           Back to board
@@ -95,7 +95,7 @@ export function ListingDetailPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <Link
-        to="/board"
+        to="/"
         className="inline-flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900"
       >
         <ArrowLeft className="h-4 w-4" />
