@@ -63,7 +63,7 @@ export const defaultStudentProfile: StudentProfile = {
   mustHaves: [],
   dealbreakers: [],
   fullName: '',
-  phoneNumber: '',
+  phoneNumber: '1234567890',
   preferredLeaseLength: '',
 }
 

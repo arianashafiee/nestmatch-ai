@@ -309,7 +309,7 @@ export function StudentProfileForm({ onSaved }: StudentProfileFormProps) {
               id="phoneNumber"
               label="Phone number"
               type="tel"
-              placeholder="e.g. (410) 555-0123"
+              placeholder="e.g. 1234567890"
               value={draft.phoneNumber}
               onChange={(e) => updateDraft({ phoneNumber: e.target.value })}
               error={errors.phoneNumber}
