@@ -51,10 +51,12 @@ app.include_router(photos.router)
 @app.get("/api/health")
 def health_check() -> dict:
     db_connected = check_database_connection()
+    using_sqlite = settings.database_url.startswith("sqlite")
     return {
         "status": "ok",
         "app": settings.app_name,
         "database": "connected" if db_connected else "disconnected",
+        "persistence": "ephemeral" if using_sqlite else "postgres",
         "ai": "openai" if settings.openai_api_key else "mock",
         "mapbox": "configured" if settings.mapbox_access_token else "not_configured",
     }

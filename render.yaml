@@ -1,6 +1,7 @@
 # Render Blueprint — https://render.com/docs/blueprint-spec
-# After connecting this repo, set secret env vars in the Render dashboard
-# (OPENAI_API_KEY, MAPBOX_ACCESS_TOKEN, JWT_SECRET). Never commit real keys.
+# After connecting this repo, set secret env vars in the Render dashboard:
+#   OPENAI_API_KEY, MAPBOX_ACCESS_TOKEN, DATABASE_URL (Neon Postgres — see README)
+# Never commit real keys.
 
 services:
   - type: web
@@ -9,13 +10,9 @@ services:
     plan: free
     region: virginia
     healthCheckPath: /api/health
-    disk:
-      name: nestmatch-data
-      mountPath: /data
-      sizeGB: 1
     envVars:
       - key: DATABASE_URL
-        value: sqlite:////data/nestmatch.db
+        sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: DEBUG

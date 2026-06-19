@@ -224,9 +224,10 @@ Or manually:
 1. Go to [render.com](https://render.com) and sign in with GitHub.
 2. **New** → **Blueprint** → connect `nestmatch-ai`.
 3. Render reads `render.yaml` and creates the web service.
-4. When prompted, add these **secret** environment variables (copy from your local `backend/.env`):
+4. When prompted, add these **secret** environment variables (copy from your local `backend/.env` where applicable):
    - `OPENAI_API_KEY`
    - `MAPBOX_ACCESS_TOKEN`
+   - `DATABASE_URL` — **required for login to work after restarts** (see below)
 5. Click **Apply**. First deploy takes ~5–10 minutes.
 
 Your live URL will look like: `https://nestmatch-ai.onrender.com`
@@ -238,12 +239,19 @@ Your live URL will look like: `https://nestmatch-ai.onrender.com`
 | `OPENAI_API_KEY` | Recommended | AI scoring + GPT search |
 | `MAPBOX_ACCESS_TOKEN` | Recommended | Maps + accurate commute |
 | `JWT_SECRET` | Auto-generated | Render creates this from `render.yaml` |
-| `DATABASE_URL` | Default OK | Persistent SQLite on `/data` (requires Render disk). For free hosting without a disk, set a [Neon](https://neon.tech) Postgres URL instead so accounts survive restarts. |
+| `DATABASE_URL` | **Yes (production)** | Free Render has no persistent disk. Use a free [Neon](https://neon.tech) Postgres URL so accounts survive redeploys. Local dev can omit this (uses SQLite). |
 | `DEBUG` | `false` | Set in `render.yaml` |
 
 Health check: `https://your-app.onrender.com/api/health` should show `"ai":"openai"` and `"mapbox":"configured"` when keys are set.
 
-**Accounts disappearing after logout?** Render’s free web tier uses an ephemeral filesystem — user data was being wiped whenever the service restarted or redeployed. The `render.yaml` blueprint now mounts a persistent disk at `/data`. If you stay on the free plan (no disk), create a free [Neon](https://neon.tech) Postgres database and set `DATABASE_URL` in the Render dashboard to the Neon connection string instead.
+**Accounts disappearing after logout?** Render’s free tier wipes the container filesystem on every redeploy or cold start. SQLite alone cannot persist accounts there. Use free Postgres instead:
+
+1. Create a project at [neon.tech](https://neon.tech) (free tier).
+2. Copy the **connection string** (starts with `postgresql://`).
+3. In Render → **nestmatch-ai** → **Environment** → add `DATABASE_URL` with that string.
+4. **Manual Deploy** → deploy latest commit.
+
+After that, register once more — logout and login will keep working across restarts.
 
 ---
 
