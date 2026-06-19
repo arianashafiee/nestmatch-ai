@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { BarChart3, CalendarDays, Home, Kanban } from 'lucide-react'
+import { BarChart3, CalendarDays, Home, Kanban, Plus } from 'lucide-react'
 import { Sidebar } from './Sidebar'
 import { TopNavbar } from './TopNavbar'
 import { TourReminderBanner } from '@/components/apartments/TourReminderBanner'
+import { Button } from '@/components/ui/Button'
+import { useApartments } from '@/context/ApartmentsContext'
 import { cn } from '@/lib/utils'
 
 const mobileNavItems = [
@@ -15,6 +17,13 @@ const mobileNavItems = [
 
 export function DashboardLayout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const { openAddModal, isListingSearchInProgress, hasUnreadListingSearch } =
+    useApartments()
+
+  const handleFindApartments = () => {
+    setIsMobileMenuOpen(false)
+    openAddModal()
+  }
 
   return (
     <div className="flex min-h-svh bg-white">
@@ -41,6 +50,25 @@ export function DashboardLayout() {
           <span className="text-lg font-semibold text-slate-900">NestMatch</span>
         </div>
         <nav className="flex flex-col gap-1 p-4">
+          <Button
+            size="sm"
+            onClick={handleFindApartments}
+            className="relative mb-2 w-full justify-center"
+          >
+            <Plus className="h-4 w-4" />
+            Find Apartments
+            {(isListingSearchInProgress || hasUnreadListingSearch) && (
+              <span
+                className={cn(
+                  'absolute right-2 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full border-2 border-white',
+                  isListingSearchInProgress
+                    ? 'animate-pulse bg-indigo-400'
+                    : 'bg-emerald-500',
+                )}
+                aria-hidden
+              />
+            )}
+          </Button>
           {mobileNavItems.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}

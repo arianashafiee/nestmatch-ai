@@ -7,12 +7,24 @@ from bs4 import BeautifulSoup
 
 from app.models import StudentProfile
 from app.services.geo import (
-    estimate_commute_minutes,
+    commute_between_coords,
     geocode,
-    haversine_miles,
     max_commute_radius_miles,
 )
 from app.services.location_parse import ParsedLocation, parse_campus_location
+from app.services.profile_requirements import (
+    bedroom_requirement_label,
+    listing_bedrooms,
+    listing_matches_bedroom_requirement,
+    listing_within_rent_budget,
+    normalize_bedroom_scalar,
+    parse_bedroom_counts_from_text,
+    rent_per_person_for_profile,
+    required_bedrooms,
+    occupant_count,
+    unit_rent_for_profile,
+    unit_rent_budget_limit,
+)
 from app.services.search_fetcher import fetch_search_page
 
 MAX_FETCH_PER_SOURCE = 50
@@ -148,13 +160,9 @@ def _parse_price(text: str) -> Optional[float]:
 
 
 def _parse_beds_baths(text: str) -> Tuple[Optional[float], Optional[float]]:
-    beds = None
+    counts = parse_bedroom_counts_from_text(text)
+    beds = float(max(counts)) if counts else None
     baths = None
-    if re.search(r"studio", text, re.I):
-        beds = 0
-    bed_match = re.search(r"(\d+)\s*(?:br|bed|bd)", text, re.I)
-    if bed_match:
-        beds = float(bed_match.group(1))
     bath_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:ba|bath)", text, re.I)
     if bath_match:
         baths = float(bath_match.group(1))
@@ -169,12 +177,19 @@ def _rent_com_location_path(parsed: ParsedLocation) -> Optional[str]:
     return f"{state_slug}/{city}"
 
 
-def _rent_com_search_url(parsed: ParsedLocation, max_rent: float) -> Optional[str]:
+def _rent_com_search_url(
+    parsed: ParsedLocation,
+    max_rent: float,
+    *,
+    min_bedrooms: Optional[int] = None,
+) -> Optional[str]:
     path = _rent_com_location_path(parsed)
     if not path:
         return None
     state, city = path.split("/", 1)
     url = f"https://www.rent.com/{state}/{city}-apartments"
+    if min_bedrooms and min_bedrooms >= 2:
+        url = f"{url}/min-bedrooms-{min_bedrooms}"
     if max_rent:
         url = f"{url}/max-price-{int(max_rent)}"
     return url
@@ -212,7 +227,7 @@ def _apply_commute_filter(
     max_commute_minutes: int,
 ) -> list[SearchResult]:
     if not campus_coords:
-        return results
+        return _filter_results_with_known_commute(results, max_commute_minutes)
 
     campus_lat, campus_lng = campus_coords
     scored: list[tuple[int, SearchResult]] = []
@@ -230,8 +245,12 @@ def _apply_commute_filter(
         if lat is None or lng is None:
             continue
 
-        distance = haversine_miles(campus_lat, campus_lng, lat, lng)
-        commute = estimate_commute_minutes(distance, commute_mode)
+        routed = commute_between_coords(
+            campus_lat, campus_lng, lat, lng, commute_mode
+        )
+        if routed is None:
+            continue
+        distance, commute = routed
         result.latitude = lat
         result.longitude = lng
         result.distance_miles = round(distance, 2)
@@ -243,6 +262,64 @@ def _apply_commute_filter(
 
     scored.sort(key=lambda pair: (pair[0], -(pair[1].rent or 0)))
     return [result for commute, result in scored if commute <= max_commute_minutes]
+
+
+def _filter_results_with_known_commute(
+    results: list[SearchResult],
+    max_commute_minutes: int,
+) -> list[SearchResult]:
+    """Keep only listings with a computed commute within the user's limit."""
+    filtered: list[SearchResult] = []
+    for result in results:
+        if (
+            result.commute_minutes is not None
+            and result.commute_minutes <= max_commute_minutes
+        ):
+            filtered.append(result)
+    return filtered
+
+
+def _apply_bedroom_filter(
+    results: list[SearchResult],
+    profile: StudentProfile,
+) -> list[SearchResult]:
+    required = required_bedrooms(profile)
+    filtered: list[SearchResult] = []
+
+    for result in results:
+        if listing_matches_bedroom_requirement(
+            bedrooms=result.bedrooms,
+            title=result.title,
+            snippet=result.snippet,
+            required=required,
+        ):
+            if result.bedrooms is None:
+                parsed = listing_bedrooms(
+                    bedrooms=None,
+                    title=result.title,
+                    snippet=result.snippet,
+                )
+                if parsed is not None:
+                    result.bedrooms = parsed
+            filtered.append(result)
+
+    return filtered
+
+
+def _apply_rent_budget_filter(
+    results: list[SearchResult],
+    profile: StudentProfile,
+) -> list[SearchResult]:
+    filtered: list[SearchResult] = []
+    for result in results:
+        if listing_within_rent_budget(
+            result.rent,
+            profile,
+            title=result.title,
+            snippet=result.snippet,
+        ):
+            filtered.append(result)
+    return filtered
 
 
 def _item_to_search_result(
@@ -260,6 +337,8 @@ def _item_to_search_result(
         )
         beds = beds if beds is not None else parsed_beds
         baths = baths if baths is not None else parsed_baths
+    beds = normalize_bedroom_scalar(beds)
+    baths = normalize_bedroom_scalar(baths)
     return SearchResult(
         title=item.get("title", f"{source_site} listing"),
         url=item[url_key],
@@ -277,7 +356,10 @@ def _item_to_search_result(
 
 
 def search_apartments_com(
-    parsed: ParsedLocation, max_rent: float
+    parsed: ParsedLocation,
+    max_rent: float,
+    *,
+    required_beds: Optional[int] = None,
 ) -> tuple[list[SearchResult], Optional[str]]:
     from app.services.apartmentguide_com import (
         apartmentguide_search_url,
@@ -296,8 +378,14 @@ def search_apartments_com(
 
     if slug:
         url = f"https://www.apartments.com/{slug}/"
+        if required_beds and required_beds >= 2:
+            url = f"https://www.apartments.com/{slug}/{required_beds}-bedrooms/"
         if max_rent:
-            url = f"https://www.apartments.com/{slug}/under-{int(max_rent)}/"
+            url = (
+                f"https://www.apartments.com/{slug}/under-{int(max_rent)}/"
+                if not (required_beds and required_beds >= 2)
+                else f"https://www.apartments.com/{slug}/{required_beds}-bedrooms/under-{int(max_rent)}/"
+            )
         fetched = fetch_search_page(url, site="apartments.com")
         if fetched.ok:
             for item in parse_apartments_com_search(fetched.html, fetched.url):
@@ -308,7 +396,11 @@ def search_apartments_com(
         elif fetched.error:
             fetch_note = fetched.error
 
-    ag_base = apartmentguide_search_url(parsed, max_rent)
+    ag_base = apartmentguide_search_url(
+        parsed,
+        max_rent,
+        min_bedrooms=required_beds if required_beds and required_beds >= 2 else None,
+    )
     if ag_base:
         for page in range(1, APARTMENTGUIDE_SEARCH_PAGES + 1):
             page_url = ag_base if page == 1 else f"{ag_base.rstrip('/')}/page-{page}/"
@@ -341,7 +433,10 @@ def search_apartments_com(
 
 
 def search_rent_com(
-    parsed: ParsedLocation, max_rent: float
+    parsed: ParsedLocation,
+    max_rent: float,
+    *,
+    required_beds: Optional[int] = None,
 ) -> tuple[list[SearchResult], Optional[str]]:
     from app.services.apartmentguide_com import (
         apartmentguide_search_url,
@@ -349,7 +444,11 @@ def search_rent_com(
     )
     from app.services.rent_com import parse_rent_com_search
 
-    url = _rent_com_search_url(parsed, max_rent)
+    url = _rent_com_search_url(
+        parsed,
+        max_rent,
+        min_bedrooms=required_beds if required_beds and required_beds >= 2 else None,
+    )
     if not url and not parsed.is_usable_for_search:
         return [], "Could not parse city/state from campus location"
 
@@ -369,7 +468,11 @@ def search_rent_com(
         elif fetched.error:
             fetch_note = fetched.error
 
-    ag_base = apartmentguide_search_url(parsed, max_rent)
+    ag_base = apartmentguide_search_url(
+        parsed,
+        max_rent,
+        min_bedrooms=required_beds if required_beds and required_beds >= 2 else None,
+    )
     if ag_base:
         for page in range(1, APARTMENTGUIDE_SEARCH_PAGES + 1):
             page_url = ag_base if page == 1 else f"{ag_base.rstrip('/')}/page-{page}/"
@@ -449,6 +552,7 @@ def search_craigslist(
     *,
     max_commute_minutes: int = 30,
     commute_mode: str = "walking",
+    required_beds: Optional[int] = None,
 ) -> tuple[list[SearchResult], Optional[str]]:
     subdomain = _craigslist_subdomain(parsed)
     url = f"https://{subdomain}.craigslist.org/search/apa"
@@ -459,6 +563,9 @@ def search_craigslist(
         params["postal"] = parsed.zip_code
         radius = max(1, int(round(max_commute_radius_miles(max_commute_minutes, commute_mode))))
         params["search_distance"] = str(radius)
+    if required_beds and required_beds >= 2:
+        params["min_bedrooms"] = str(required_beds)
+        params["query"] = f"{required_beds} bedroom"
 
     fetched = fetch_search_page(url, site="craigslist", params=params)
     if not fetched.ok:
@@ -592,8 +699,11 @@ def search_all_sources(profile: StudentProfile) -> dict:
     raw_location = profile.campus_location or profile.university or ""
     parsed = parse_campus_location(raw_location)
     max_rent = profile.max_rent or 2000
+    unit_rent_limit = unit_rent_budget_limit(profile)
     commute_mode = profile.commute_mode or "walking"
     max_commute_minutes = profile.max_commute_minutes or 30
+    required_beds = required_bedrooms(profile)
+    bedroom_label = bedroom_requirement_label(profile)
 
     if not parsed.is_usable_for_search:
         return {
@@ -612,6 +722,7 @@ def search_all_sources(profile: StudentProfile) -> dict:
             "max_commute_minutes": max_commute_minutes,
             "commute_mode": commute_mode,
             "ai_ranked": False,
+            "ai_discovered": False,
         }
 
     campus_coords = geocode(parsed.geocode_query)
@@ -633,43 +744,71 @@ def search_all_sources(profile: StudentProfile) -> dict:
         if name == "craigslist":
             results, error = searcher(
                 parsed,
-                max_rent,
+                unit_rent_limit,
                 max_commute_minutes=max_commute_minutes,
                 commute_mode=commute_mode,
+                required_beds=required_beds,
             )
         elif name == "jhu_housing":
-            results, error = searcher(parsed, max_rent, commute_mode)
+            results, error = searcher(parsed, unit_rent_limit, commute_mode)
+        elif name in ("apartments.com", "rent.com"):
+            results, error = searcher(parsed, unit_rent_limit, required_beds=required_beds)
         else:
-            results, error = searcher(parsed, max_rent)
+            results, error = searcher(parsed, unit_rent_limit)
         sources_searched.append(name)
         if error and results:
             errors[name] = error
         elif error and not results:
             errors[name] = error
 
-        if name == "jhu_housing":
-            filtered = results
-        else:
-            filtered = _apply_commute_filter(
-                results,
-                campus_coords,
-                parsed,
-                commute_mode,
-                max_commute_minutes,
+        filtered = _apply_commute_filter(
+            results,
+            campus_coords,
+            parsed,
+            commute_mode,
+            max_commute_minutes,
+        )
+        if campus_coords and results and not filtered:
+            errors[name] = (
+                f"No listings within {max_commute_minutes} min "
+                f"{commute_mode} of campus"
+                + (f" from {name}" if name != "jhu_housing" else "")
             )
-            if campus_coords and results and not filtered:
-                errors[name] = (
-                    f"No listings within {max_commute_minutes} min "
-                    f"{commute_mode} of campus"
+
+        bedroom_filtered = _apply_bedroom_filter(filtered, profile)
+        if filtered and not bedroom_filtered:
+            errors[name] = (
+                f"No {bedroom_label} listings found"
+                + (f" from {name}" if name != "jhu_housing" else "")
+            )
+        filtered = bedroom_filtered
+
+        rent_filtered = _apply_rent_budget_filter(filtered, profile)
+        if filtered and not rent_filtered:
+            errors[name] = (
+                f"No listings within ${int(max_rent)}/mo per person budget"
+                + (
+                    f" (split among {occupant_count(profile)} people)"
+                    if occupant_count(profile) > 1
+                    else ""
                 )
+                + (f" from {name}" if name != "jhu_housing" else "")
+            )
+        filtered = rent_filtered
 
         capped = filtered[:MAX_RESULTS_PER_SOURCE]
         if max_rent:
             capped.sort(
                 key=lambda r: (
-                    0 if r.rent and r.rent <= max_rent else 1,
+                    rent_per_person_for_profile(
+                        r.rent or 0,
+                        profile,
+                        title=r.title,
+                        snippet=r.snippet,
+                    )
+                    if r.rent
+                    else 999999,
                     r.commute_minutes if r.commute_minutes is not None else 999,
-                    -(r.rent or 0),
                 )
             )
         by_source[name] = capped
@@ -679,18 +818,74 @@ def search_all_sources(profile: StudentProfile) -> dict:
     from app.services.listing_dedupe import dedupe_cross_site_results
 
     unique = dedupe_cross_site_results(unique)
+    unique = _apply_bedroom_filter(unique, profile)
+    unique = _apply_rent_budget_filter(unique, profile)
 
+    ai_discovered = False
     ai_ranked = False
-    if unique:
-        from app.config import settings
-        from app.services.search_ai import enrich_search_results_with_ai
+    from app.config import settings
 
-        if settings.openai_api_key:
+    if settings.openai_api_key:
+        from app.services.search_ai import (
+            discover_listings_with_ai_web_search,
+            enrich_search_results_with_ai,
+        )
+
+        ai_results, ai_discover_error = discover_listings_with_ai_web_search(
+            profile,
+            parsed,
+            search_area=_search_area(parsed),
+        )
+        if ai_discover_error and not ai_results:
+            errors["gpt_search"] = ai_discover_error
+        elif ai_results:
+            ai_commute_filtered = _apply_commute_filter(
+                ai_results,
+                campus_coords,
+                parsed,
+                commute_mode,
+                max_commute_minutes,
+            )
+            if campus_coords and ai_results and not ai_commute_filtered:
+                errors["gpt_search"] = (
+                    f"GPT search found listings but none within "
+                    f"{max_commute_minutes} min {commute_mode} of campus"
+                )
+            ai_bedroom_filtered = _apply_bedroom_filter(ai_commute_filtered, profile)
+            if ai_commute_filtered and not ai_bedroom_filtered:
+                errors["gpt_search"] = (
+                    f"GPT search found listings but none matched {bedroom_label}"
+                )
+            if ai_bedroom_filtered:
+                seen_urls = {item.url for item in unique}
+                added = 0
+                for item in ai_bedroom_filtered:
+                    if item.url in seen_urls:
+                        continue
+                    seen_urls.add(item.url)
+                    unique.append(item)
+                    added += 1
+                if added:
+                    ai_discovered = True
+                    if "gpt_search" not in sources_searched:
+                        sources_searched.append("gpt_search")
+
+        if unique:
             unique, ai_error = enrich_search_results_with_ai(unique, profile)
             if ai_error:
                 errors["openai"] = f"AI ranking skipped: {ai_error}"
             else:
                 ai_ranked = True
+
+    unique = _apply_bedroom_filter(unique, profile)
+    unique = _apply_rent_budget_filter(unique, profile)
+    unique = _apply_commute_filter(
+        unique,
+        campus_coords,
+        parsed,
+        commute_mode,
+        max_commute_minutes,
+    )
 
     return {
         "results": unique,
@@ -703,6 +898,7 @@ def search_all_sources(profile: StudentProfile) -> dict:
         "max_commute_minutes": max_commute_minutes,
         "commute_mode": commute_mode,
         "ai_ranked": ai_ranked,
+        "ai_discovered": ai_discovered,
     }
 
 

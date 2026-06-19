@@ -20,6 +20,7 @@ export function AddApartmentModal() {
     submitError,
     isListingSearchInProgress,
     listingSearch,
+    isProfileStaleForSearch,
   } = useApartments()
   const { isProfileComplete } = useStudentProfile()
 
@@ -92,9 +93,11 @@ export function AddApartmentModal() {
               <p className="text-sm text-slate-500">
                 {isListingSearchInProgress
                   ? 'Search running in the background — close anytime and reopen to view results'
-                  : listingSearch?.results.length
-                    ? `${listingSearch.results.length} saved listings — search near campus or add a link`
-                    : 'Search near campus or add a listing you found'}
+                  : isProfileStaleForSearch
+                    ? 'Profile updated — refresh search near campus or add a link'
+                    : listingSearch?.results.length
+                      ? `${listingSearch.results.length} saved listings — search near campus or add a link`
+                      : 'Search near campus or add a listing you found'}
               </p>
             </div>
           </div>

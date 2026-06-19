@@ -92,10 +92,11 @@ export function TopNavbar({ onMenuToggle, isMobileMenuOpen }: TopNavbarProps) {
         <Button
           size="sm"
           onClick={openAddModal}
-          className="relative hidden sm:inline-flex"
+          className="relative inline-flex"
+          aria-label="Find Apartments"
         >
           <Plus className="h-4 w-4" />
-          Find Apartments
+          <span className="hidden sm:inline">Find Apartments</span>
           {(isListingSearchInProgress || hasUnreadListingSearch) && (
             <span
               className={cn(

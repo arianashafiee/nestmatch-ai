@@ -1,5 +1,7 @@
 """ApartmentGuide.com search (RentGroup platform — same inventory as Rent.com)."""
 
+from typing import Optional
+
 from app.services.location_parse import STATE_NAME_TO_ABBREV, ParsedLocation
 from app.services.rentgroup_search import (
     build_apartmentguide_listing_url,
@@ -14,12 +16,19 @@ def _state_slug(state_abbrev: str) -> str:
     return state_abbrev.upper()
 
 
-def apartmentguide_search_url(parsed: ParsedLocation, max_rent: float) -> str:
+def apartmentguide_search_url(
+    parsed: ParsedLocation,
+    max_rent: float,
+    *,
+    min_bedrooms: Optional[int] = None,
+) -> str:
     if not parsed.is_usable_for_search:
         return ""
     state_slug = _state_slug(parsed.state)
     city_slug = parsed.city.replace(" ", "-")
     url = f"https://www.apartmentguide.com/apartments/{state_slug}/{city_slug}/"
+    if min_bedrooms and min_bedrooms >= 2:
+        url = f"{url}{min_bedrooms}-bedrooms/"
     if max_rent:
         url = f"{url}under-{int(max_rent)}/"
     return url

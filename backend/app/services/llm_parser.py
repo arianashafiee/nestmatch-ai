@@ -8,6 +8,7 @@ from app.models import StudentProfile
 from app.schemas import ListingAnalysis
 from app.services.listing_address import resolve_map_location
 from app.services.mock_parser import parse_listing_mock
+from app.services.profile_requirements import occupant_count
 
 LISTING_ANALYSIS_SCHEMA = {
     "type": "object",
@@ -81,10 +82,11 @@ Analyze the apartment listing below against the student's profile. Extract all a
 STUDENT PROFILE:
 - University: {profile.university}
 - Campus location: {profile.campus_location}
-- Max monthly rent: ${profile.max_rent}
+- Max monthly rent: ${profile.max_rent} (student's personal budget per person)
 - Max commute: {profile.max_commute_minutes} minutes by {profile.commute_mode}
 - Living situation: {profile.living_situation}
 - Roommates: {profile.roommate_count}
+- People sharing rent: {occupant_count(profile)}
 - Must-haves: {", ".join(profile.must_haves or []) or "none"}
 - Dealbreakers: {", ".join(profile.dealbreakers or []) or "none"}
 - Preferred lease length: {profile.preferred_lease_length or "not specified"}
@@ -95,7 +97,7 @@ LISTING TEXT:
 INSTRUCTIONS:
 1. Extract rent, location, bed/bath, amenities, hidden fees, lease length.
 2. For location, use the listing's street address if present (e.g. "123 Main St, Baltimore, MD"). Do NOT use the student's campus address as the listing location.
-3. Compare against student budget and dealbreakers.
+3. Compare against student budget and dealbreakers. The student's max_rent is their personal monthly budget. For listings with bedroom-based price ranges (e.g. '\$999 - \$2,299 · 1 - 4 Beds'), use the rent tier matching the student's required bedroom count — not the studio/low price. Unless the listing explicitly says rent is per person, divide that unit rent by {occupant_count(profile)} people when scoring affordability.
 4. Calculate compatibility_score (0-100) with score_breakdown for: affordability, commute, amenities, safety_comfort, student_fit (each 0-100).
 5. Flag standard rental scams/red flags (price too low, wire transfer requests, vague listings, etc.).
 6. List missing_info the listing doesn't mention.

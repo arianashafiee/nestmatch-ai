@@ -20,7 +20,16 @@ import { useApartments } from '@/context/ApartmentsContext'
 import { useStudentProfile } from '@/context/StudentProfileContext'
 import { useToast } from '@/context/ToastContext'
 import { cn } from '@/lib/utils'
-import { commuteLabelFromDistance } from '@/lib/commute'
+import { commuteLabelFromDistance, listingWithinCommuteLimit } from '@/lib/commute'
+import {
+  bedroomRequirementLabel,
+  filterListingsByBedroomRequirement,
+} from '@/lib/profileRequirements'
+import {
+  formatRentForProfile,
+  listingWithinRentBudget,
+  rentBudgetLabel,
+} from '@/lib/rentSharing'
 import type { Apartment, SearchListingResult } from '@/types/apartment'
 import { normalizeApartment, photoProxyUrl } from '@/types/apartment'
 
@@ -31,6 +40,7 @@ const SOURCE_LABELS: Record<string, string> = {
   'zillow.com': 'Zillow',
   craigslist: 'Craigslist',
   'realtor.com': 'Realtor.com',
+  gpt_search: 'GPT Web Search',
 }
 
 interface DiscoverListingsProps {
@@ -62,13 +72,18 @@ export function DiscoverListings({ onAdded }: DiscoverListingsProps) {
 
   const area = profile.campusLocation || profile.university
 
-  const results = useMemo(
-    () =>
-      listingSearch
-        ? sortSearchResultsByScore(listingSearch.results, apartments)
-        : [],
-    [apartments, listingSearch],
-  )
+  const results = useMemo(() => {
+    if (!listingSearch) return []
+    const sorted = sortSearchResultsByScore(listingSearch.results, apartments)
+    const bedroomFiltered = filterListingsByBedroomRequirement(sorted, profile)
+    return bedroomFiltered.filter((listing) =>
+      listingWithinRentBudget(
+        listing.rent,
+        profile,
+        `${listing.title} ${listing.snippet}`,
+      ) && listingWithinCommuteLimit(listing, profile),
+    )
+  }, [apartments, listingSearch, profile])
 
   const sourcesSearched = listingSearch?.sourcesSearched ?? []
   const searchErrors = listingSearch?.searchErrors ?? {}
@@ -196,7 +211,8 @@ export function DiscoverListings({ onAdded }: DiscoverListingsProps) {
           <strong>Realtor.com</strong> near your campus address. JHU portal
           listings use each property&apos;s street address; other sites are
           filtered by your max {profile.commuteMode} commute (
-          {profile.maxCommuteMinutes} min) and budget (${profile.maxRent}/mo).
+          {profile.maxCommuteMinutes} min), {bedroomRequirementLabel(profile)}{' '}
+          size, and budget ({rentBudgetLabel(profile)}).
           With <strong>OpenAI</strong> configured, results are also AI-ranked
           and summarized for your profile.
         </p>
@@ -222,7 +238,7 @@ export function DiscoverListings({ onAdded }: DiscoverListingsProps) {
               <Loader2 className="h-4 w-4 animate-spin" />
               Searching near {area}...
             </>
-          ) : isProfileStaleForSearch && hasCachedResults ? (
+          ) : isProfileStaleForSearch ? (
             <>
               <RefreshCw className="h-4 w-4" />
               Refresh for updated profile
@@ -241,12 +257,12 @@ export function DiscoverListings({ onAdded }: DiscoverListingsProps) {
         </Button>
       )}
 
-      {isProfileStaleForSearch && hasCachedResults && (
+      {isProfileStaleForSearch && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <p className="font-medium">Your profile changed since this search</p>
           <p className="mt-1 text-xs text-amber-800">
-            Showing your last results below. Refresh the search to update
-            commute filtering, budget, and AI ranking for your new settings.
+            Previous results were cleared. Click refresh to search again with your
+            updated commute, bedroom size, budget, and preferences.
           </p>
         </div>
       )}
@@ -260,8 +276,8 @@ export function DiscoverListings({ onAdded }: DiscoverListingsProps) {
 
       {searchMeta?.aiRanked && !isProfileStaleForSearch && (
         <p className="text-xs font-medium text-indigo-700">
-          Results ranked by OpenAI based on your budget, commute, and
-          preferences.
+          Results include GPT web search for your required bedroom count near
+          campus, ranked by OpenAI for budget, commute, and preferences.
         </p>
       )}
 
@@ -408,7 +424,11 @@ export function DiscoverListings({ onAdded }: DiscoverListingsProps) {
                       </div>
                       {listing.rent != null && (
                         <p className="mt-1 text-sm font-medium text-indigo-600">
-                          ${listing.rent.toLocaleString()}/mo
+                          {formatRentForProfile(
+                            listing.rent,
+                            profile,
+                            `${listing.title} ${listing.snippet}`,
+                          )}
                         </p>
                       )}
                       {(() => {

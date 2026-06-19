@@ -21,6 +21,33 @@ export function formatCommuteToCampus(
   return `~${minutes} min ${commuteModeShortLabel(mode)} to campus`
 }
 
+/** Prefer API commute minutes; fall back to distance-based estimate. */
+export function listingCommuteMinutes(
+  listing: {
+    commuteMinutes: number | null
+    distanceMiles: number | null
+  },
+  mode: CommuteMode,
+): number | null {
+  if (listing.commuteMinutes != null) return listing.commuteMinutes
+  if (listing.distanceMiles != null && listing.distanceMiles > 0) {
+    return estimateCommuteMinutes(listing.distanceMiles, mode)
+  }
+  return null
+}
+
+export function listingWithinCommuteLimit(
+  listing: {
+    commuteMinutes: number | null
+    distanceMiles: number | null
+  },
+  profile: { maxCommuteMinutes: number; commuteMode: CommuteMode },
+): boolean {
+  const minutes = listingCommuteMinutes(listing, profile.commuteMode)
+  if (minutes == null) return false
+  return minutes <= profile.maxCommuteMinutes
+}
+
 /** Prefer geocoded distance; fall back to precomputed minutes from search. */
 export function commuteLabelFromDistance(
   distanceMiles: number | null | undefined,

@@ -8,6 +8,7 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 
 from app.services.image_quality import normalize_photo_list, rent_com_photo_url
+from app.services.profile_requirements import expand_bedroom_range
 
 RENT_LC_ID_RE = re.compile(r"-lc(\d+)", re.I)
 
@@ -95,6 +96,30 @@ def _rent_from_listing(listing: dict, match: Optional[dict] = None) -> Optional[
     return None
 
 
+def _bedroom_counts_from_listing(
+    listing: dict,
+    match: Optional[dict],
+) -> set[int]:
+    counts: set[int] = set()
+    if match:
+        beds = match.get("beds") or {}
+        if isinstance(beds, dict) and beds.get("low") is not None:
+            low = float(beds["low"])
+            high = float(beds["high"]) if beds.get("high") is not None else None
+            counts.update(expand_bedroom_range(low, high))
+
+    for entry in listing.get("bedCountData") or []:
+        if not isinstance(entry, dict):
+            continue
+        bed_val = entry.get("beds")
+        if bed_val is None:
+            bed_val = entry.get("bedCount")
+        if bed_val is not None:
+            counts.add(int(round(float(bed_val))))
+
+    return counts
+
+
 def _beds_baths_from_match(match: Optional[dict]) -> tuple[Optional[float], Optional[float]]:
     if not match:
         return None, None
@@ -167,6 +192,7 @@ def parse_rentgroup_search(
         listing_address = listing.get("addressFull") or listing.get("address") or ""
 
         beds, baths = _beds_baths_from_match(match)
+        bedroom_counts = _bedroom_counts_from_listing(listing, match)
         snippet_parts: list[str] = []
         if listing.get("priceText"):
             snippet_parts.append(str(listing["priceText"]))
@@ -178,7 +204,11 @@ def parse_rentgroup_search(
             elif low:
                 snippet_parts.append(f"From ${int(low)}/mo")
 
-        if beds is not None:
+        if bedroom_counts:
+            snippet_parts.append(
+                " · ".join(f"{count} bed" for count in sorted(bedroom_counts))
+            )
+        elif beds is not None:
             snippet_parts.append(f"{beds} bed")
         if baths is not None:
             snippet_parts.append(f"{baths} bath")

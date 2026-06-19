@@ -2,6 +2,8 @@ import { Link } from 'react-router-dom'
 import { ScoreBadge } from '@/components/apartments/ScoreBadge'
 import { ListingAddressDirections } from '@/components/apartments/ListingAddressDirections'
 import { CommuteToCampusLabel } from '@/components/apartments/CommuteToCampusLabel'
+import { useStudentProfile } from '@/context/StudentProfileContext'
+import { formatRentForProfile } from '@/lib/rentSharing'
 import { cn } from '@/lib/utils'
 import { isSampleListing } from '@/lib/kanban'
 import type { Apartment } from '@/types/apartment'
@@ -14,6 +16,7 @@ interface ApartmentCardProps {
 }
 
 export function ApartmentCard({ apartment, compact, pending }: ApartmentCardProps) {
+  const { profile } = useStudentProfile()
   const analysis = apartment.analysis
   const score = apartment.compatibilityScore ?? analysis?.compatibility_score
   const title = listingTitleFromApartment(apartment)
@@ -52,7 +55,7 @@ export function ApartmentCard({ apartment, compact, pending }: ApartmentCardProp
           <h3 className="truncate font-semibold text-slate-900">{title}</h3>
           {rent != null && (
             <p className="mt-0.5 text-sm font-medium text-indigo-600">
-              ${rent.toLocaleString()}/mo
+              {formatRentForProfile(rent, profile, apartment.rawText)}
             </p>
           )}
           {!pending && analysis && (

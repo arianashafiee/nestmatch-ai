@@ -7,6 +7,10 @@ from urllib.parse import urljoin
 
 from app.services.image_quality import normalize_photo_list
 from app.services.location_parse import ParsedLocation
+from app.services.profile_requirements import (
+    bedroom_counts_from_structured,
+    normalize_bedroom_scalar,
+)
 
 TRULIA_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -104,15 +108,24 @@ def parse_trulia_search(html: str, base_url: str) -> list[dict]:
         lat = location.get("latitude") or location.get("lat")
         lng = location.get("longitude") or location.get("lng")
         rent = _rent_from_home(home)
+        bedrooms_raw = home.get("bedrooms")
+        bedroom_counts = bedroom_counts_from_structured(bedrooms_raw)
+        snippet_parts = ["Via Trulia (Zillow network)."]
+        if bedroom_counts:
+            snippet_parts.append(
+                " · ".join(f"{count} bed" for count in sorted(bedroom_counts))
+            )
+        elif isinstance(bedrooms_raw, dict) and bedrooms_raw.get("formattedValue"):
+            snippet_parts.append(str(bedrooms_raw["formattedValue"]))
 
         results.append(
             {
                 "title": str(title)[:200],
                 "url": listing_url,
                 "rent": rent,
-                "bedrooms": home.get("bedrooms"),
-                "bathrooms": home.get("bathrooms"),
-                "snippet": "Via Trulia (Zillow network).",
+                "bedrooms": normalize_bedroom_scalar(bedrooms_raw),
+                "bathrooms": normalize_bedroom_scalar(home.get("bathrooms")),
+                "snippet": " ".join(snippet_parts),
                 "photos": _photo_from_home(home),
                 "listing_address": title,
                 "latitude": float(lat) if lat is not None else None,

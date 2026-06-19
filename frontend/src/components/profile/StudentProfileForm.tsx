@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/Input'
 import { StepIndicator } from '@/components/ui/StepIndicator'
 import { TagToggle } from '@/components/ui/TagToggle'
 import { useStudentProfile } from '@/context/StudentProfileContext'
+import { rentBudgetLabel } from '@/lib/rentSharing'
 import { cn } from '@/lib/utils'
 import {
   AMENITY_OPTIONS,
@@ -178,7 +179,7 @@ export function StudentProfileForm({ onSaved }: StudentProfileFormProps) {
             />
             <div>
               <label className="text-sm font-medium text-slate-700">
-                Max monthly rent: ${draft.maxRent}
+                Max monthly rent: {rentBudgetLabel(draft)}
               </label>
               <input
                 type="range"

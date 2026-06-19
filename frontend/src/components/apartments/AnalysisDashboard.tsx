@@ -9,6 +9,7 @@ import { ScoreBadge } from '@/components/apartments/ScoreBadge'
 import { useApartmentCommute } from '@/context/CommuteContext'
 import { useStudentProfile } from '@/context/StudentProfileContext'
 import { formatCommuteToCampus } from '@/lib/commute'
+import { formatRentForProfile } from '@/lib/rentSharing'
 import { cn } from '@/lib/utils'
 import {
   SCORE_CATEGORIES,
@@ -50,9 +51,11 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
 function AnalysisContent({
   analysis,
   apartmentId,
+  listingText = '',
 }: {
   analysis: ListingAnalysis
   apartmentId: number
+  listingText?: string
 }) {
   const { profile } = useStudentProfile()
   const commute = useApartmentCommute(apartmentId)
@@ -67,7 +70,11 @@ function AnalysisContent({
           <div className="mt-2 flex flex-wrap gap-3 text-sm text-slate-500">
             {analysis.rent_monthly != null && (
               <span className="font-medium text-indigo-600">
-                ${analysis.rent_monthly.toLocaleString()}/mo
+                {formatRentForProfile(
+                  analysis.rent_monthly,
+                  profile,
+                  listingText,
+                )}
               </span>
             )}
             {analysis.bedrooms != null && (
@@ -197,7 +204,11 @@ export function AnalysisDashboard({
 
   return (
     <div className="space-y-6">
-      <AnalysisContent analysis={apartment.analysis} apartmentId={apartment.id} />
+      <AnalysisContent
+        analysis={apartment.analysis}
+        apartmentId={apartment.id}
+        listingText={apartment.rawText}
+      />
       {showRawText && (
         <details className="rounded-xl border border-slate-200 bg-slate-50 p-4">
           <summary className="cursor-pointer text-sm font-medium text-slate-700">

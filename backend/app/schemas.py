@@ -166,6 +166,7 @@ class SearchListingsResponse(BaseModel):
     max_commute_minutes: int = 30
     commute_mode: CommuteModeLiteral = "walking"
     ai_ranked: bool = False
+    ai_discovered: bool = False
 
 
 class CommuteListingInput(BaseModel):

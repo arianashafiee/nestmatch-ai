@@ -3,6 +3,8 @@ import { Star, Trash2 } from 'lucide-react'
 import { ScoreBadge } from '@/components/apartments/ScoreBadge'
 import { ListingAddressDirections } from '@/components/apartments/ListingAddressDirections'
 import { CommuteToCampusLabel } from '@/components/apartments/CommuteToCampusLabel'
+import { useStudentProfile } from '@/context/StudentProfileContext'
+import { formatRentForProfile } from '@/lib/rentSharing'
 import { confirmDeleteListing } from '@/lib/listingActions'
 import { cn } from '@/lib/utils'
 import { KANBAN_COLUMNS } from '@/lib/kanban'
@@ -23,6 +25,7 @@ export function FavoritesSection({
   onToggleFavorite,
   onDelete,
 }: FavoritesSectionProps) {
+  const { profile } = useStudentProfile()
   const favorites = apartments
     .filter((a) => a.isFavorite && a.analysis && a.status !== 'pending')
     .sort(
@@ -87,7 +90,7 @@ export function FavoritesSection({
                     </div>
                     {rent != null && (
                       <p className="mt-0.5 text-xs font-medium text-indigo-600">
-                        ${rent.toLocaleString()}/mo
+                        {formatRentForProfile(rent, profile, apt.rawText)}
                       </p>
                     )}
                     <CommuteToCampusLabel apartment={apt} className="mt-1" />

@@ -4,7 +4,12 @@ from typing import Optional
 
 from app.models import StudentProfile
 from app.schemas import ListingAnalysis, ScoreBreakdown
-from app.services.listing_address import extract_listing_address
+from app.services.profile_requirements import (
+    listing_rent_is_per_person,
+    occupant_count,
+    rent_per_person_for_profile,
+    unit_rent_for_profile,
+)
 from app.services.jhu_housing import (
     compute_homewood_commute_minutes,
     extract_jhu_homewood_distance_from_text,
@@ -83,6 +88,8 @@ def _profile_defaults(profile: StudentProfile) -> dict:
         "campus": profile.campus_location or profile.university or "campus",
         "commute_mode": profile.commute_mode or "walking",
         "living_situation": profile.living_situation or "solo",
+        "roommate_count": profile.roommate_count or 0,
+        "occupant_count": occupant_count(profile),
         "must_haves": profile.must_haves or [],
         "dealbreakers": profile.dealbreakers or [],
     }
@@ -168,11 +175,18 @@ def parse_listing_mock(
 
     affordability = 70
     max_rent = prefs["max_rent"]
+    rent_for_budget = rent
     if rent:
-        if rent <= max_rent:
-            affordability = max(55, int(100 - ((rent / max_rent) * 35)))
+        rent_for_budget = rent_per_person_for_profile(
+            rent,
+            profile,
+            extra_text=text,
+        )
+    if rent_for_budget:
+        if rent_for_budget <= max_rent:
+            affordability = max(55, int(100 - ((rent_for_budget / max_rent) * 35)))
         else:
-            over = ((rent - max_rent) / max_rent) * 100
+            over = ((rent_for_budget - max_rent) / max_rent) * 100
             affordability = max(10, int(50 - over))
 
     commute_score = 75
@@ -202,7 +216,7 @@ def parse_listing_mock(
     student_fit = 70
     if prefs["living_situation"] == "roommates" and beds and beds >= 2:
         student_fit += 15
-    if rent and rent <= max_rent * 0.85:
+    if rent_for_budget and rent_for_budget <= max_rent * 0.85:
         student_fit += 10
     student_fit = min(100, student_fit)
 
@@ -223,10 +237,26 @@ def parse_listing_mock(
 
     pros = []
     cons = []
-    if rent and rent <= max_rent:
-        pros.append(f"Within your ${int(max_rent)}/mo budget")
-    elif rent:
-        cons.append(f"Above your ${int(max_rent)}/mo budget by ${int(rent - max_rent)}")
+    occupants = prefs["occupant_count"]
+    per_person_listing = listing_rent_is_per_person(extra_text=text)
+    unit_rent = unit_rent_for_profile(rent, profile, extra_text=text) if rent else None
+    if rent_for_budget and rent_for_budget <= max_rent:
+        if occupants > 1 and unit_rent and not per_person_listing:
+            pros.append(
+                f"Your share is about ${int(rent_for_budget)}/mo "
+                f"(${int(unit_rent)}/mo total split among {occupants})"
+            )
+        else:
+            pros.append(f"Within your ${int(max_rent)}/mo budget")
+    elif rent_for_budget:
+        over = int(rent_for_budget - max_rent)
+        if occupants > 1 and unit_rent and not per_person_listing:
+            cons.append(
+                f"Your share is about ${int(rent_for_budget)}/mo "
+                f"(${int(unit_rent)}/mo total) — ${over} over your ${int(max_rent)}/mo budget"
+            )
+        else:
+            cons.append(f"Above your ${int(max_rent)}/mo budget by ${over}")
     if jhu_commute is not None:
         mode = prefs["commute_mode"]
         if jhu_commute <= max_commute:

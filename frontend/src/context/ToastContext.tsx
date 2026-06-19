@@ -13,11 +13,16 @@ interface Toast {
   id: number
   message: string
   variant: ToastVariant
+  href?: string
 }
 
 interface ToastContextValue {
   toasts: Toast[]
-  showToast: (message: string, variant?: ToastVariant) => void
+  showToast: (
+    message: string,
+    variant?: ToastVariant,
+    href?: string,
+  ) => void
   dismissToast: (id: number) => void
 }
 
@@ -31,9 +36,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const showToast = useCallback(
-    (message: string, variant: ToastVariant = 'info') => {
+    (message: string, variant: ToastVariant = 'info', href?: string) => {
       const id = Date.now()
-      setToasts((prev) => [...prev, { id, message, variant }])
+      setToasts((prev) => [...prev, { id, message, variant, href }])
       setTimeout(() => dismissToast(id), 5000)
     },
     [dismissToast],

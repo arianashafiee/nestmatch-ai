@@ -9,6 +9,8 @@ import {
 import { ScoreBadge } from '@/components/apartments/ScoreBadge'
 import { ListingAddressDirections } from '@/components/apartments/ListingAddressDirections'
 import { CommuteToCampusLabel } from '@/components/apartments/CommuteToCampusLabel'
+import { useStudentProfile } from '@/context/StudentProfileContext'
+import { formatRentForProfile } from '@/lib/rentSharing'
 import { formatTourDateTime } from '@/lib/tours'
 import { confirmDeleteListing } from '@/lib/listingActions'
 import { cn } from '@/lib/utils'
@@ -41,6 +43,7 @@ export function KanbanCard({
   onDelete,
   onDragStart,
 }: KanbanCardProps) {
+  const { profile } = useStudentProfile()
   const analysis = apartment.analysis
   const score = apartment.compatibilityScore ?? analysis?.compatibility_score
   const title = apartment.title ?? analysis?.title ?? 'Untitled listing'
@@ -125,7 +128,7 @@ export function KanbanCard({
           </div>
           {rent != null && (
             <p className="mt-0.5 text-xs font-medium text-indigo-600">
-              ${rent.toLocaleString()}/mo
+              {formatRentForProfile(rent, profile, apartment.rawText)}
             </p>
           )}
           <CommuteToCampusLabel apartment={apartment} className="mt-1" />

@@ -6,6 +6,10 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 
 from app.services.image_quality import normalize_photo_list
+from app.services.profile_requirements import (
+    bedroom_counts_from_structured,
+    normalize_bedroom_scalar,
+)
 
 ZILLOW_HOMEDETAILS_RE = re.compile(
     r"https://www\.zillow\.com/homedetails/[^\s\"'<>]+",
@@ -94,18 +98,24 @@ def parse_zillow_search(html: str, base_url: str) -> list[dict]:
                 snippet_parts = []
                 if rent:
                     snippet_parts.append(f"${int(rent)}/mo")
-                if beds is not None:
+                bedroom_counts = bedroom_counts_from_structured(beds)
+                if bedroom_counts:
+                    snippet_parts.append(
+                        " · ".join(f"{count} bed" for count in sorted(bedroom_counts))
+                    )
+                elif beds is not None:
                     snippet_parts.append(f"{beds} bed")
-                if baths is not None:
-                    snippet_parts.append(f"{baths} bath")
+                baths_scalar = normalize_bedroom_scalar(baths)
+                if baths_scalar is not None:
+                    snippet_parts.append(f"{baths_scalar:g} bath")
 
                 results.append(
                     {
                         "title": title[:200],
                         "url": listing_url,
                         "rent": float(rent) if rent is not None else None,
-                        "bedrooms": float(beds) if beds is not None else None,
-                        "bathrooms": float(baths) if baths is not None else None,
+                        "bedrooms": normalize_bedroom_scalar(beds),
+                        "bathrooms": baths_scalar,
                         "snippet": " · ".join(snippet_parts),
                         "photos": photos,
                         "listing_address": title,

@@ -63,6 +63,7 @@ def search_listings(
             max_commute_minutes=data.get("max_commute_minutes", 30),
             commute_mode=data.get("commute_mode", "walking"),
             ai_ranked=data.get("ai_ranked", False),
+            ai_discovered=data.get("ai_discovered", False),
         )
     except HTTPException:
         raise

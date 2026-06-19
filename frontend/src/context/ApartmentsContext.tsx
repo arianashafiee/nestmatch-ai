@@ -25,9 +25,27 @@ import {
   searchProfileFingerprint,
   type ListingSearchState,
 } from '@/lib/listingSearchCache'
+import { listingWithinCommuteLimit } from '@/lib/commute'
 import { sortSearchResultsByScore } from '@/lib/listingActions'
+import { filterListingsByBedroomRequirement } from '@/lib/profileRequirements'
+import { listingWithinRentBudget } from '@/lib/rentSharing'
 import type { Apartment, ApartmentStatus, SearchListingResult } from '@/types/apartment'
 import { normalizeApartment } from '@/types/apartment'
+import type { StudentProfile } from '@/types/studentProfile'
+
+function filterSearchResultsForProfile(
+  results: SearchListingResult[],
+  profile: StudentProfile,
+): SearchListingResult[] {
+  return filterListingsByBedroomRequirement(results, profile).filter(
+    (listing) =>
+      listingWithinRentBudget(
+        listing.rent,
+        profile,
+        `${listing.title} ${listing.snippet}`,
+      ) && listingWithinCommuteLimit(listing, profile),
+  )
+}
 
 interface ApartmentsContextValue {
   apartments: Apartment[]
@@ -150,7 +168,10 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
         if (listingSearchRequestId.current !== requestId) return
 
         const fingerprint = searchProfileFingerprint(profile)
-        const sortedResults = sortSearchResultsByScore(data.results, apartments)
+        const sortedResults = filterSearchResultsForProfile(
+          sortSearchResultsByScore(data.results, apartments),
+          profile,
+        )
         const nextState: ListingSearchState = {
           results: sortedResults,
           sourcesSearched: data.sourcesSearched,
@@ -260,6 +281,7 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
         showToast(
           `Scored "${parsed.title ?? 'listing'}" — ${parsed.compatibilityScore ?? parsed.analysis?.compatibility_score}/100`,
           'success',
+          `/board/${parsed.id}`,
         )
         return parsed
       } catch (err) {
@@ -512,7 +534,26 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
 
     const cachedSearch = loadListingSearchCache(user.id)
     if (cachedSearch) {
-      setListingSearch(cachedSearch)
+      const stale =
+        searchProfileFingerprint(profile) !== cachedSearch.profileFingerprint
+      setListingSearch(
+        stale
+          ? {
+              ...cachedSearch,
+              results: [],
+              sourcesSearched: [],
+              searchErrors: {},
+              searchArea: '',
+              searchMeta: null,
+            }
+          : {
+              ...cachedSearch,
+              results: filterSearchResultsForProfile(
+                cachedSearch.results,
+                profile,
+              ),
+            },
+      )
     } else {
       setListingSearch(null)
     }
@@ -545,6 +586,46 @@ export function ApartmentsProvider({ children }: { children: ReactNode }) {
     }
     init()
   }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!user) return
+
+    setListingSearch((prev) => {
+      if (!prev) return prev
+      const currentFingerprint = searchProfileFingerprint(profile)
+      if (currentFingerprint === prev.profileFingerprint) return prev
+      if (
+        prev.results.length === 0 &&
+        prev.sourcesSearched.length === 0 &&
+        !prev.searchArea
+      ) {
+        return prev
+      }
+
+      const cleared: ListingSearchState = {
+        ...prev,
+        results: [],
+        sourcesSearched: [],
+        searchErrors: {},
+        searchArea: '',
+        searchMeta: null,
+      }
+      persistListingSearchCache(user.id, cleared)
+      return cleared
+    })
+  }, [
+    profile.university,
+    profile.campusLocation,
+    profile.maxRent,
+    profile.maxCommuteMinutes,
+    profile.commuteMode,
+    profile.livingSituation,
+    profile.roommateCount,
+    profile.mustHaves,
+    profile.dealbreakers,
+    profile.preferredLeaseLength,
+    user,
+  ])
 
   const value = useMemo(
     () => ({
