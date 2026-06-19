@@ -300,7 +300,7 @@ export function StudentProfileForm({ onSaved }: StudentProfileFormProps) {
             <Input
               id="fullName"
               label="Your name"
-              placeholder="e.g. Alex Johnson"
+              placeholder="e.g. John Doe"
               value={draft.fullName}
               onChange={(e) => updateDraft({ fullName: e.target.value })}
               error={errors.fullName}
