@@ -23,7 +23,7 @@ export function RegisterPage() {
     }
     setIsSubmitting(true)
     try {
-      await register(email.trim(), password)
+      await register(email.trim().toLowerCase(), password)
       showToast('Account created — set up your profile next', 'success')
       navigate('/profile')
     } catch (err) {

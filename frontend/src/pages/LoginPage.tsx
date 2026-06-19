@@ -18,7 +18,7 @@ export function LoginPage() {
     event.preventDefault()
     setIsSubmitting(true)
     try {
-      await login(email.trim(), password)
+      await login(email.trim().toLowerCase(), password)
       showToast('Welcome back!', 'success')
       navigate('/')
     } catch (err) {

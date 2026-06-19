@@ -238,10 +238,12 @@ Your live URL will look like: `https://nestmatch-ai.onrender.com`
 | `OPENAI_API_KEY` | Recommended | AI scoring + GPT search |
 | `MAPBOX_ACCESS_TOKEN` | Recommended | Maps + accurate commute |
 | `JWT_SECRET` | Auto-generated | Render creates this from `render.yaml` |
-| `DATABASE_URL` | Default OK | SQLite (`sqlite:///./nestmatch.db`) |
+| `DATABASE_URL` | Default OK | Persistent SQLite on `/data` (requires Render disk). For free hosting without a disk, set a [Neon](https://neon.tech) Postgres URL instead so accounts survive restarts. |
 | `DEBUG` | `false` | Set in `render.yaml` |
 
 Health check: `https://your-app.onrender.com/api/health` should show `"ai":"openai"` and `"mapbox":"configured"` when keys are set.
+
+**Accounts disappearing after logout?** Render’s free web tier uses an ephemeral filesystem — user data was being wiped whenever the service restarted or redeployed. The `render.yaml` blueprint now mounts a persistent disk at `/data`. If you stay on the free plan (no disk), create a free [Neon](https://neon.tech) Postgres database and set `DATABASE_URL` in the Render dashboard to the Neon connection string instead.
 
 ---
 

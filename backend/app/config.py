@@ -27,6 +27,19 @@ class Settings(BaseSettings):
 
     database_url: str = _DEFAULT_SQLITE
 
+    @field_validator("database_url", mode="after")
+    @classmethod
+    def normalize_database_url(cls, value: str) -> str:
+        if not value.startswith("sqlite"):
+            return value
+        if value.startswith("sqlite:////"):
+            return value
+        relative = value.removeprefix("sqlite:///")
+        path = Path(relative)
+        if not path.is_absolute():
+            return f"sqlite:///{(_BACKEND_DIR / path).resolve()}"
+        return value
+
     openai_api_key: Optional[str] = None
     openai_model: str = "gpt-4o-mini"
 

@@ -9,9 +9,13 @@ services:
     plan: free
     region: virginia
     healthCheckPath: /api/health
+    disk:
+      name: nestmatch-data
+      mountPath: /data
+      sizeGB: 1
     envVars:
       - key: DATABASE_URL
-        value: sqlite:///./nestmatch.db
+        value: sqlite:////data/nestmatch.db
       - key: JWT_SECRET
         generateValue: true
       - key: DEBUG
