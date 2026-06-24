@@ -1,4 +1,5 @@
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Callable, Optional, Tuple
 from urllib.parse import urljoin
@@ -31,6 +32,7 @@ MAX_FETCH_PER_SOURCE = 50
 MAX_RESULTS_PER_SOURCE = 24
 MAX_TOTAL_RESULTS = 72
 APARTMENTGUIDE_SEARCH_PAGES = 5
+MAX_SOURCE_WORKERS = 6
 
 STATE_SLUGS = {
     "al": "alabama",
@@ -103,6 +105,19 @@ class SearchResult:
     longitude: Optional[float] = None
     distance_miles: Optional[float] = None
     commute_minutes: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class SearchSource:
+    name: str
+    search: Callable[[], tuple[list[SearchResult], Optional[str]]]
+
+
+@dataclass
+class SearchSourceResult:
+    name: str
+    results: list[SearchResult]
+    error: Optional[str] = None
 
 
 def _search_area(parsed: ParsedLocation) -> str:
@@ -695,6 +710,178 @@ def _merge_results_round_robin(
     return merged
 
 
+def _build_search_sources(
+    parsed: ParsedLocation,
+    unit_rent_limit: float,
+    *,
+    commute_mode: str,
+    max_commute_minutes: int,
+    required_beds: int,
+) -> list[SearchSource]:
+    return [
+        SearchSource(
+            "jhu_housing",
+            lambda: search_jhu_housing(parsed, unit_rent_limit, commute_mode),
+        ),
+        SearchSource(
+            "apartments.com",
+            lambda: search_apartments_com(
+                parsed,
+                unit_rent_limit,
+                required_beds=required_beds,
+            ),
+        ),
+        SearchSource(
+            "rent.com",
+            lambda: search_rent_com(
+                parsed,
+                unit_rent_limit,
+                required_beds=required_beds,
+            ),
+        ),
+        SearchSource(
+            "zillow.com",
+            lambda: search_zillow(parsed, unit_rent_limit),
+        ),
+        SearchSource(
+            "craigslist",
+            lambda: search_craigslist(
+                parsed,
+                unit_rent_limit,
+                max_commute_minutes=max_commute_minutes,
+                commute_mode=commute_mode,
+                required_beds=required_beds,
+            ),
+        ),
+        SearchSource(
+            "realtor.com",
+            lambda: search_realtor(parsed, unit_rent_limit),
+        ),
+    ]
+
+
+def _sort_source_results(
+    results: list[SearchResult],
+    profile: StudentProfile,
+    max_rent: float,
+) -> list[SearchResult]:
+    if not max_rent:
+        return results
+    return sorted(
+        results,
+        key=lambda r: (
+            rent_per_person_for_profile(
+                r.rent or 0,
+                profile,
+                title=r.title,
+                snippet=r.snippet,
+            )
+            if r.rent
+            else 999999,
+            r.commute_minutes if r.commute_minutes is not None else 999,
+        ),
+    )
+
+
+def _run_and_filter_source(
+    source: SearchSource,
+    *,
+    profile: StudentProfile,
+    parsed: ParsedLocation,
+    campus_coords: Optional[tuple[float, float]],
+    commute_mode: str,
+    max_commute_minutes: int,
+    bedroom_label: str,
+    max_rent: float,
+) -> SearchSourceResult:
+    try:
+        results, error = source.search()
+    except Exception as exc:
+        return SearchSourceResult(source.name, [], str(exc))
+
+    source_error = error
+    filtered = _apply_commute_filter(
+        results,
+        campus_coords,
+        parsed,
+        commute_mode,
+        max_commute_minutes,
+    )
+    if campus_coords and results and not filtered:
+        source_error = (
+            f"No listings within {max_commute_minutes} min "
+            f"{commute_mode} of campus"
+            + (f" from {source.name}" if source.name != "jhu_housing" else "")
+        )
+
+    bedroom_filtered = _apply_bedroom_filter(filtered, profile)
+    if filtered and not bedroom_filtered:
+        source_error = (
+            f"No {bedroom_label} listings found"
+            + (f" from {source.name}" if source.name != "jhu_housing" else "")
+        )
+    filtered = bedroom_filtered
+
+    rent_filtered = _apply_rent_budget_filter(filtered, profile)
+    if filtered and not rent_filtered:
+        source_error = (
+            f"No listings within ${int(max_rent)}/mo per person budget"
+            + (
+                f" (split among {occupant_count(profile)} people)"
+                if occupant_count(profile) > 1
+                else ""
+            )
+            + (f" from {source.name}" if source.name != "jhu_housing" else "")
+        )
+    filtered = rent_filtered
+
+    ranked = _sort_source_results(filtered, profile, max_rent)
+    return SearchSourceResult(
+        source.name,
+        ranked[:MAX_RESULTS_PER_SOURCE],
+        source_error,
+    )
+
+
+def _run_sources_concurrently(
+    sources: list[SearchSource],
+    *,
+    profile: StudentProfile,
+    parsed: ParsedLocation,
+    campus_coords: Optional[tuple[float, float]],
+    commute_mode: str,
+    max_commute_minutes: int,
+    bedroom_label: str,
+    max_rent: float,
+) -> dict[str, SearchSourceResult]:
+    if not sources:
+        return {}
+
+    results: dict[str, SearchSourceResult] = {}
+    with ThreadPoolExecutor(max_workers=min(MAX_SOURCE_WORKERS, len(sources))) as executor:
+        futures = {
+            executor.submit(
+                _run_and_filter_source,
+                source,
+                profile=profile,
+                parsed=parsed,
+                campus_coords=campus_coords,
+                commute_mode=commute_mode,
+                max_commute_minutes=max_commute_minutes,
+                bedroom_label=bedroom_label,
+                max_rent=max_rent,
+            ): source.name
+            for source in sources
+        }
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                results[name] = future.result()
+            except Exception as exc:
+                results[name] = SearchSourceResult(name, [], str(exc))
+    return results
+
+
 def search_all_sources(profile: StudentProfile) -> dict:
     raw_location = profile.campus_location or profile.university or ""
     parsed = parse_campus_location(raw_location)
@@ -727,93 +914,35 @@ def search_all_sources(profile: StudentProfile) -> dict:
 
     campus_coords = geocode(parsed.geocode_query)
 
-    sources: list[tuple[str, Callable[..., tuple[list[SearchResult], Optional[str]]]]] = [
-        ("jhu_housing", search_jhu_housing),
-        ("apartments.com", search_apartments_com),
-        ("rent.com", search_rent_com),
-        ("zillow.com", search_zillow),
-        ("craigslist", search_craigslist),
-        ("realtor.com", search_realtor),
-    ]
+    sources = _build_search_sources(
+        parsed,
+        unit_rent_limit,
+        commute_mode=commute_mode,
+        max_commute_minutes=max_commute_minutes,
+        required_beds=required_beds,
+    )
 
     by_source: dict[str, list[SearchResult]] = {}
-    sources_searched: list[str] = []
     errors: dict[str, str] = {}
 
-    for name, searcher in sources:
-        if name == "craigslist":
-            results, error = searcher(
-                parsed,
-                unit_rent_limit,
-                max_commute_minutes=max_commute_minutes,
-                commute_mode=commute_mode,
-                required_beds=required_beds,
-            )
-        elif name == "jhu_housing":
-            results, error = searcher(parsed, unit_rent_limit, commute_mode)
-        elif name in ("apartments.com", "rent.com"):
-            results, error = searcher(parsed, unit_rent_limit, required_beds=required_beds)
-        else:
-            results, error = searcher(parsed, unit_rent_limit)
-        sources_searched.append(name)
-        if error and results:
-            errors[name] = error
-        elif error and not results:
-            errors[name] = error
+    source_results = _run_sources_concurrently(
+        sources,
+        profile=profile,
+        parsed=parsed,
+        campus_coords=campus_coords,
+        commute_mode=commute_mode,
+        max_commute_minutes=max_commute_minutes,
+        bedroom_label=bedroom_label,
+        max_rent=max_rent,
+    )
+    sources_searched = [source.name for source in sources]
+    for source in sources:
+        result = source_results.get(source.name, SearchSourceResult(source.name, []))
+        if result.error:
+            errors[source.name] = result.error
+        by_source[source.name] = result.results
 
-        filtered = _apply_commute_filter(
-            results,
-            campus_coords,
-            parsed,
-            commute_mode,
-            max_commute_minutes,
-        )
-        if campus_coords and results and not filtered:
-            errors[name] = (
-                f"No listings within {max_commute_minutes} min "
-                f"{commute_mode} of campus"
-                + (f" from {name}" if name != "jhu_housing" else "")
-            )
-
-        bedroom_filtered = _apply_bedroom_filter(filtered, profile)
-        if filtered and not bedroom_filtered:
-            errors[name] = (
-                f"No {bedroom_label} listings found"
-                + (f" from {name}" if name != "jhu_housing" else "")
-            )
-        filtered = bedroom_filtered
-
-        rent_filtered = _apply_rent_budget_filter(filtered, profile)
-        if filtered and not rent_filtered:
-            errors[name] = (
-                f"No listings within ${int(max_rent)}/mo per person budget"
-                + (
-                    f" (split among {occupant_count(profile)} people)"
-                    if occupant_count(profile) > 1
-                    else ""
-                )
-                + (f" from {name}" if name != "jhu_housing" else "")
-            )
-        filtered = rent_filtered
-
-        capped = filtered[:MAX_RESULTS_PER_SOURCE]
-        if max_rent:
-            capped.sort(
-                key=lambda r: (
-                    rent_per_person_for_profile(
-                        r.rent or 0,
-                        profile,
-                        title=r.title,
-                        snippet=r.snippet,
-                    )
-                    if r.rent
-                    else 999999,
-                    r.commute_minutes if r.commute_minutes is not None else 999,
-                )
-            )
-        by_source[name] = capped
-
-    unique = _merge_results_round_robin(by_source, [name for name, _ in sources])
+    unique = _merge_results_round_robin(by_source, sources_searched)
 
     from app.services.listing_dedupe import dedupe_cross_site_results
 
